@@ -66,12 +66,54 @@ public class MainActivity extends AppCompatActivity {
                 Intent ActivityIntent = new Intent(getApplicationContext(), GattConnected.class);
                 ActivityIntent.putExtra(INTENT_SERIAL_MESSAGE, DeviceSerial);
                 startActivity(ActivityIntent);
+            } else if ( MyService.ACTION_GATT_DISCOVERED.equals(action)) {
+                Log.i(TAG, "onReceive: Finished scanning for BLE devices!!");
+                updateUiWithResults();
             }
         }
     };
 
+    private void updateUiWithResults(){
+        if (mService == null){
+            Log.i(TAG, "updateUiWithResults: Service Null - returning");
+            return;
+        }
+
+        final ArrayList<String> items =  mService.getDevices();
+        if (items == null){
+            Log.i(TAG, "updateUiWithResults: No Items found!");
+            return;
+        }
+
+        for (String s: items){
+            Log.i(TAG, "updateUiWithResults: " + s);
+        }
+
+        itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
+
+        final ListView listView = (ListView) findViewById(R.id.bleItems);
+        listView.setAdapter(itemsAdapter);
+
+        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
+            @Override
+            public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
+                String DeviceSerialTemp = itemsAdapter.getItem(position);
+                if (DeviceSerialTemp != null){
+                    DeviceSerial = DeviceSerialTemp;
+                    Log.i(TAG, "onItemClick: setting DeviceSerial to " + DeviceSerial);
+                } else {
+                    Log.i(TAG, "onItemClick: Failed to find item");
+                }
+
+                Log.i(TAG, "onItemClick: ");
+                mService.BleConnect(position);
+            }
+        });
+    }
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
+        Log.i(TAG, "onCreate: Created!");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         model = new ViewModelProvider(this,  new myFactory(this.getApplication())).get(MyViewModel.class);
@@ -79,10 +121,12 @@ public class MainActivity extends AppCompatActivity {
 
     @Override
     protected void onStart() {
+        Log.i(TAG, "onStart: Started!");
         super.onStart();
 
         // start the BLE service
         Intent intent = new Intent(this, MyService.class);
+        startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
         // make sure we have proper permissions
@@ -105,7 +149,7 @@ public class MainActivity extends AppCompatActivity {
                         99);
             }
         }
-
+/*
         // set up the array list
         final ArrayList<String> items = new ArrayList<>();
         itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
@@ -144,6 +188,7 @@ public class MainActivity extends AppCompatActivity {
                 mService.BleConnect(position);
             }
         });
+  */
     }
 
     @Override
@@ -156,7 +201,6 @@ public class MainActivity extends AppCompatActivity {
     public void startScan(View v) {
         Log.i(TAG, "startScan: Starting Scan!" );
         if ( mService != null ) {
-            itemsAdapter.clear();
             mService.BleScan();
         }
     }
@@ -185,6 +229,9 @@ public class MainActivity extends AppCompatActivity {
             MyService.LocalBinder binder = (MyService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
+
+            // after a configuration change, get the latest
+            updateUiWithResults();
         }
 
         @Override
@@ -193,12 +240,8 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
-
     @Override
     protected void onResume() {
-        // make sure the list is empty on resume...
-        itemsAdapter.clear();
-
         super.onResume();
         registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
     }
@@ -208,10 +251,17 @@ public class MainActivity extends AppCompatActivity {
         super.onPause();
         unregisterReceiver(mGattUpdateReceiver);
     }
+    
+    public void read(View v){
+        Log.i(TAG, "read: !");
+        mService.readChar();
+    }
 
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(MyService.ACTION_GATT_CONNECTED);
+        //intentFilter.addAction(MyService.ACTION_GATT_CONNECTED);
+        //intentFilter.addAction(MyService.ACTION_GATT_DISCOVERED);
+        //intentFilter.addAction(MyService.ACTION_GATT_DISCONNECTED);
         return intentFilter;
     }
 }

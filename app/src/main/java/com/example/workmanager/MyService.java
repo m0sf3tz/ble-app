@@ -17,23 +17,24 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
 import android.os.Handler;
+import android.os.HandlerThread;
 import android.os.IBinder;
+import android.os.Message;
 import android.util.Log;
 import android.util.SparseArray;
+import android.widget.Toast;
 
 import androidx.lifecycle.MutableLiveData;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-
-
-
 public class MyService extends Service {
     final static String TAG = "MyService";
+    private Handler mHandler;
 
     // When filtering for advertising packets, we filter for devices that have device name set to
-    // TERA_FIRE_GUARD _AND_ manufacturer DI set to 52651
+    // TERA_FIRE_GUARD _AND_ manufacturer ID set to 52651
     // this is how we uniquely identify TeraHelion Devices
     final static String DEVICE_NAME = "TERA_FIRE_GUARD";
     final static int MANUFACTURER_ID = 52651;
@@ -47,12 +48,14 @@ public class MyService extends Service {
     private ArrayList<ScanFilter> filterList;
     private ScanSettings settings;
 
-    ArrayList<discoveredDevice> discoveredDevicesArray;
+    private static ArrayList<discoveredDevice> discoveredDevicesArray = new ArrayList<discoveredDevice>();
     gattCallback gattCallback;
     static BluetoothGatt refGatt;
 
     static final String TERA_FIRE_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
     BluetoothGattCharacteristic deviceCloudKey;
+
+    private static final int GATT_GET_PROVISIONED = 0;
 
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
@@ -62,6 +65,10 @@ public class MyService extends Service {
             "com.example.workManager.le.ACTION_GATT_CONNECTED";
     public final static String ACTION_GATT_DISCONNECTED =
             "com.example.workManager.le.ACTION_GATT_DISCONNECTED";
+    public final static String ACTION_GATT_DISCOVERED =
+            "com.example.workManager.le.ACTION_GATT_DISCOVERED";
+
+    private MutableLiveData<String> currentName;
 
     class gattCallback extends BluetoothGattCallback {
         final static String TAG = "gattCallback";
@@ -70,25 +77,36 @@ public class MyService extends Service {
                                             int newState) {
             Log.i(TAG, "onConnectionStateChange: " + status + newState);
 
-            if ( status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED ){
+            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED) {
                 Log.i(TAG, "onConnectionStateChange: Connected!");
                 MyService.refGatt = gatt;
                 gatt.discoverServices();
                 broadcastUpdate(ACTION_GATT_CONNECTED);
             }
 
-            if ( newState == BluetoothGatt.STATE_DISCONNECTED ){
+            if (newState == BluetoothGatt.STATE_DISCONNECTED) {
                 Log.i(TAG, "onConnectionStateChange: STATE_DISCONNECTED!");
                 MyService.refGatt = null;
                 broadcastUpdate(ACTION_GATT_DISCONNECTED);
             }
         }
 
-        private void broadcastUpdate(final String action) {
-            Log.i(TAG, "broadcastUpdate: sending: " + action);
-            final Intent intent = new Intent(action);
-            sendBroadcast(intent);
+        public void onCharacteristicRead(BluetoothGatt gatt,
+                                         BluetoothGattCharacteristic characteristic,
+                                         int status) {
+
+            byte[] arr = characteristic.getValue();
         }
+
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            Log.i(TAG, "onServicesDiscovered: posting...!");
+        }
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        Log.i(TAG, "onDestroy: service destroyed!");
     }
 
     @Override
@@ -111,6 +129,24 @@ public class MyService extends Service {
                 .build();
 
         discoveredDevicesArray = new ArrayList<discoveredDevice>();
+
+        // Create a new background thread for processing messages or runnables sequentially
+        HandlerThread handlerThread = new HandlerThread("HandlerThreadName");
+        // Starts the background thread
+        handlerThread.start();
+        // Create a handler attached to the HandlerThread's Looper
+        mHandler = new Handler(handlerThread.getLooper()) {
+            @Override
+            public void handleMessage(Message msg) {
+                Log.i(TAG, "handleMessage: message" + msg.what);
+
+                if (msg.what == GATT_GET_PROVISIONED) {
+                    if (refGatt != null) {
+                        readChar();
+                    }
+                }
+            }
+        };
     }
 
     public class LocalBinder extends Binder {
@@ -125,7 +161,7 @@ public class MyService extends Service {
         return binder;
     }
 
-    public void BleConnect(int position){
+    public void BleConnect(int position) {
         BluetoothDevice device = discoveredDevicesArray.get(position).getDevice();
         Log.i(TAG, "BleConnect: Connecting to device: " + device);
         gattCallback = new gattCallback();
@@ -139,11 +175,10 @@ public class MyService extends Service {
 
     public void BleScan() {
         Log.i(TAG, "BleScan: Starting BLE scan!");
-        final MutableLiveData<ArrayList<discoveredDevice>> myMutable = ListLiveData.get();
 
         if (bluetoothLeScanner != null) {
             if (!scanning) {
-                if (refGatt != null){
+                if (refGatt != null) {
                     refGatt.disconnect();
                 }
 
@@ -155,13 +190,9 @@ public class MyService extends Service {
                         scanning = false;
                         bluetoothLeScanner.stopScan(leScanCallback);
 
-                        // post to the UI thread the discovered devices
-                        myMutable.postValue(discoveredDevicesArray);
+                        broadcastUpdate(ACTION_GATT_DISCOVERED);
                     }
                 }, SCAN_PERIOD);
-
-                discoveredDevicesArray.clear(); // clear the discovered devices
-                myMutable.postValue(discoveredDevicesArray);
 
                 scanning = true;
                 bluetoothLeScanner.startScan(filterList, settings, leScanCallback);
@@ -172,34 +203,40 @@ public class MyService extends Service {
         }
     }
 
-    public void listServices(){
+    public void listServices() {
         if (refGatt == null)
             return;
 
         List<BluetoothGattService> serviceList = refGatt.getServices();
-        for (BluetoothGattService service:serviceList){
-            Log.i(TAG, "listServices: item" + service.getUuid() );
+        for (BluetoothGattService service : serviceList) {
+            Log.i(TAG, "listServices: item" + service.getUuid());
 
             //get a list of characteristics
             List<BluetoothGattCharacteristic> characteristicsList = service.getCharacteristics();
-            for ( BluetoothGattCharacteristic characteristics: characteristicsList) {
+            for (BluetoothGattCharacteristic characteristics : characteristicsList) {
                 Log.i(TAG, "---->" + characteristics.getUuid().toString());
-                }
+            }
             Log.i(TAG, "");
         }
     }
 
-    public BluetoothGattCharacteristic getChar(){
+    @Override
+    public int onStartCommand(Intent intent, int flags, int startId) {
+        return START_NOT_STICKY;
+    }
+
+    // this gets the handle to the characteristics, not the value itself
+    public BluetoothGattCharacteristic getChar() {
         if (refGatt == null)
             return null;
 
         List<BluetoothGattService> serviceList = refGatt.getServices();
-        for (BluetoothGattService service:serviceList){
+        for (BluetoothGattService service : serviceList) {
 
             //get a list of characteristics
             List<BluetoothGattCharacteristic> characteristicsList = service.getCharacteristics();
-            for ( BluetoothGattCharacteristic characteristics: characteristicsList) {
-                if ( characteristics.getUuid().toString().equals(TERA_FIRE_UUID)) {
+            for (BluetoothGattCharacteristic characteristics : characteristicsList) {
+                if (characteristics.getUuid().toString().equals(TERA_FIRE_UUID)) {
                     return characteristics;
                 }
             }
@@ -213,12 +250,31 @@ public class MyService extends Service {
         BluetoothGattCharacteristic bleChar = getChar();
         if (bleChar != null) {
             bleChar.setValue("12");
-            if ( ! refGatt.writeCharacteristic(bleChar) ){
+            if (!refGatt.writeCharacteristic(bleChar)) {
                 Log.e(TAG, "setChar: Failed to write characteristic");
             }
 
         } else {
             Log.i(TAG, "setChar: could not setChar");
+        }
+    }
+
+    //async
+    public void readChar() {
+        BluetoothGattCharacteristic bleChar = getChar();
+        refGatt.readCharacteristic(bleChar);
+    }
+
+    public ArrayList<String> getDevices() {
+        if (discoveredDevicesArray != null) {
+            ArrayList<String> deviceStringArr = new ArrayList<String>();
+            for (discoveredDevice device : discoveredDevicesArray) {
+                Log.i(TAG, "getDevices: Adding device:" + device.getSerial());
+                deviceStringArr.add(device.getSerial());
+            }
+            return deviceStringArr;
+        } else {
+            return null;
         }
     }
 
@@ -250,7 +306,15 @@ public class MyService extends Service {
 
     // Sends broadcasts to the main activity
     private void broadcastUpdate(final String action) {
+        Log.i(TAG, "broadcastUpdate: sending: " + action);
         final Intent intent = new Intent(action);
         sendBroadcast(intent);
+    }
+
+    public MutableLiveData<String> getCurrentName() {
+        if (currentName == null) {
+            currentName = new MutableLiveData<String>();
+        }
+        return currentName;
     }
 }
