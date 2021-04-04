@@ -20,33 +20,14 @@ import android.os.Handler;
 import android.os.IBinder;
 import android.util.Log;
 import android.util.SparseArray;
-import android.bluetooth.BluetoothGattCharacteristic;
 
 import androidx.lifecycle.MutableLiveData;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
-class gattCallback extends BluetoothGattCallback {
-    final static String TAG = "gattCallback";
 
-    public void onConnectionStateChange(BluetoothGatt gatt, int status,
-                                        int newState) {
-        Log.i(TAG, "onConnectionStateChange: " + status + newState);
 
-        if ( status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED ){
-            Log.i(TAG, "onConnectionStateChange: Connected!");
-            MyService.refGatt = gatt;
-            gatt.discoverServices();
-        }
-
-        if ( status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_DISCONNECTING ){
-            Log.i(TAG, "onConnectionStateChange: STATE_DISCONNECTING!");
-            MyService.refGatt = null;
-        }
-    }
-}
 
 public class MyService extends Service {
     final static String TAG = "MyService";
@@ -73,7 +54,41 @@ public class MyService extends Service {
     static final String TERA_FIRE_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
     BluetoothGattCharacteristic deviceCloudKey;
 
-    public MyService() {
+    private static final int STATE_DISCONNECTED = 0;
+    private static final int STATE_CONNECTING = 1;
+    private static final int STATE_CONNECTED = 2;
+
+    public final static String ACTION_GATT_CONNECTED =
+            "com.example.workManager.le.ACTION_GATT_CONNECTED";
+    public final static String ACTION_GATT_DISCONNECTED =
+            "com.example.workManager.le.ACTION_GATT_DISCONNECTED";
+
+    class gattCallback extends BluetoothGattCallback {
+        final static String TAG = "gattCallback";
+
+        public void onConnectionStateChange(BluetoothGatt gatt, int status,
+                                            int newState) {
+            Log.i(TAG, "onConnectionStateChange: " + status + newState);
+
+            if ( status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED ){
+                Log.i(TAG, "onConnectionStateChange: Connected!");
+                MyService.refGatt = gatt;
+                gatt.discoverServices();
+                broadcastUpdate(ACTION_GATT_CONNECTED);
+            }
+
+            if ( newState == BluetoothGatt.STATE_DISCONNECTED ){
+                Log.i(TAG, "onConnectionStateChange: STATE_DISCONNECTED!");
+                MyService.refGatt = null;
+                broadcastUpdate(ACTION_GATT_DISCONNECTED);
+            }
+        }
+
+        private void broadcastUpdate(final String action) {
+            Log.i(TAG, "broadcastUpdate: sending: " + action);
+            final Intent intent = new Intent(action);
+            sendBroadcast(intent);
+        }
     }
 
     @Override
@@ -232,4 +247,10 @@ public class MyService extends Service {
                     Log.e(TAG, "onScanFailed: Failed to scan!");
                 }
             };
+
+    // Sends broadcasts to the main activity
+    private void broadcastUpdate(final String action) {
+        final Intent intent = new Intent(action);
+        sendBroadcast(intent);
+    }
 }

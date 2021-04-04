@@ -13,9 +13,11 @@ import androidx.lifecycle.ViewModelProvider;
 import android.Manifest;
 import android.app.Activity;
 import android.app.Application;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.location.LocationManager;
@@ -25,6 +27,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.EditText;
 import android.widget.ListView;
 import android.widget.Toast;
 
@@ -46,11 +49,26 @@ class myFactory implements ViewModelProvider.Factory {
 
 public class MainActivity extends AppCompatActivity {
     private final String TAG = "MainActivity";
+    public final static String INTENT_SERIAL_MESSAGE = "INTENT_SERIAL_KEY";
     private MyViewModel model;
     MyService mService;
     boolean mBound = false;
     ArrayAdapter<String> itemsAdapter;
+    private String DeviceSerial = "NULL";
+    
+    private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
+            if (MyService.ACTION_GATT_CONNECTED.equals(action)) {
+                Log.i(TAG, "onReceive: Connected to GATT server!");
 
+                Intent ActivityIntent = new Intent(getApplicationContext(), GattConnected.class);
+                ActivityIntent.putExtra(INTENT_SERIAL_MESSAGE, DeviceSerial);
+                startActivity(ActivityIntent);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -101,7 +119,6 @@ public class MainActivity extends AppCompatActivity {
         final Observer<ArrayList<discoveredDevice>> nameObserver = new Observer<ArrayList<discoveredDevice>>() {
             @Override
             public void onChanged(@Nullable final ArrayList<discoveredDevice> newItems) {
-
                 for(discoveredDevice device : newItems)
                 {
                     System.out.println("here " + device.getSerial());
@@ -115,6 +132,14 @@ public class MainActivity extends AppCompatActivity {
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
+                String DeviceSerialTemp = itemsAdapter.getItem(position);
+                if (DeviceSerialTemp != null){
+                    DeviceSerial = DeviceSerialTemp;
+                    Log.i(TAG, "onItemClick: setting DeviceSerial to " + DeviceSerial);
+                } else {
+                    Log.i(TAG, "onItemClick: Failed to find item");
+                }
+                
                 Log.i(TAG, "onItemClick: ");
                 mService.BleConnect(position);
             }
@@ -168,4 +193,25 @@ public class MainActivity extends AppCompatActivity {
         }
     };
 
+
+    @Override
+    protected void onResume() {
+        // make sure the list is empty on resume...
+        itemsAdapter.clear();
+
+        super.onResume();
+        registerReceiver(mGattUpdateReceiver, makeGattUpdateIntentFilter());
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+        unregisterReceiver(mGattUpdateReceiver);
+    }
+
+    private static IntentFilter makeGattUpdateIntentFilter() {
+        final IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(MyService.ACTION_GATT_CONNECTED);
+        return intentFilter;
+    }
 }
