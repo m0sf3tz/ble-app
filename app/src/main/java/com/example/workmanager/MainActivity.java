@@ -116,7 +116,6 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "onCreate: Created!");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        model = new ViewModelProvider(this,  new myFactory(this.getApplication())).get(MyViewModel.class);
     }
 
     @Override
@@ -194,8 +193,10 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        unbindService(connection);
-        mBound = false;
+        if ( mBound ) {
+            unbindService(connection);
+            mBound = false;
+        }
     }
 
     public void startScan(View v) {
@@ -259,7 +260,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
-        //intentFilter.addAction(MyService.ACTION_GATT_CONNECTED);
+        intentFilter.addAction(MyService.ACTION_GATT_CONNECTED);
         //intentFilter.addAction(MyService.ACTION_GATT_DISCOVERED);
         //intentFilter.addAction(MyService.ACTION_GATT_DISCONNECTED);
         return intentFilter;

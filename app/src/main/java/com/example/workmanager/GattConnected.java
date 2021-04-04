@@ -1,6 +1,9 @@
 package com.example.workmanager;
 
+import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.lifecycle.MutableLiveData;
+import androidx.lifecycle.Observer;
 
 import android.content.BroadcastReceiver;
 import android.content.Context;
@@ -8,9 +11,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.os.Bundle;
 import android.util.Log;
+import android.widget.CheckBox;
 import android.widget.TextView;
-
-import org.w3c.dom.Text;
 
 public class GattConnected extends AppCompatActivity {
     private final static String TAG = "GattConnected";
@@ -41,6 +43,21 @@ public class GattConnected extends AppCompatActivity {
                 serialDisplay.setText("Connected to: " + serial);
             }
         }
+
+        MutableLiveData<Boolean> mLiveData = bleLiveData.getLiveDataSingletonProvisionedStatus();
+
+        // Create the observer which updates the UI.
+        final Observer<Boolean> provisionedObserver = new Observer<Boolean>() {
+            @Override
+            public void onChanged(@Nullable final Boolean provisioned) {
+                Log.i(TAG, "onChanged: new check box status = " + provisioned.toString());
+                // Update the UI, in this case, a TextView.
+                CheckBox provisionedDisplay = (CheckBox) findViewById(R.id.checkBoxProv);
+                provisionedDisplay.setChecked(provisioned);
+            }
+        };
+
+        mLiveData.observe(this, provisionedObserver);
     }
 
     @Override

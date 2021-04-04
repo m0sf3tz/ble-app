@@ -22,7 +22,6 @@ import android.os.IBinder;
 import android.os.Message;
 import android.util.Log;
 import android.util.SparseArray;
-import android.widget.Toast;
 
 import androidx.lifecycle.MutableLiveData;
 import java.nio.charset.StandardCharsets;
@@ -96,10 +95,23 @@ public class MyService extends Service {
                                          int status) {
 
             byte[] arr = characteristic.getValue();
+            MutableLiveData<Boolean> mMutable= bleLiveData.getLiveDataSingletonProvisionedStatus();
+
+            Boolean tmp = false;
+            if (arr.length > 0){
+                if (arr[0] == 0 ){
+                    tmp = false;
+                } else {
+                    tmp = true;
+                }
+            }
+            mMutable.postValue(tmp);
         }
+
 
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.i(TAG, "onServicesDiscovered: posting...!");
+            readChar();
         }
     }
 
@@ -190,6 +202,7 @@ public class MyService extends Service {
                         scanning = false;
                         bluetoothLeScanner.stopScan(leScanCallback);
 
+                        updateLiveData();
                         broadcastUpdate(ACTION_GATT_DISCOVERED);
                     }
                 }, SCAN_PERIOD);
@@ -201,6 +214,10 @@ public class MyService extends Service {
                 bluetoothLeScanner.stopScan(leScanCallback);
             }
         }
+    }
+
+    private void updateLiveData() {
+
     }
 
     public void listServices() {
