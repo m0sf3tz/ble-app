@@ -21,6 +21,8 @@ public class bleLiveData {
     public static MutableLiveData<ArrayList<String>> getLiveDataSingletonDeviceArr() {
         if (sInstanceDeviceArr == null) {
             sInstanceDeviceArr = new MutableLiveData<ArrayList<String>>();
+
+            sInstanceDeviceArr.setValue(new ArrayList<String>());
         }
         return sInstanceDeviceArr;
     }

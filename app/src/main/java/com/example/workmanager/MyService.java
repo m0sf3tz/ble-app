@@ -90,6 +90,12 @@ public class MyService extends Service {
             }
         }
 
+        @Override
+        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+            super.onMtuChanged(gatt, mtu, status);
+            Log.i(TAG, "New MTU: " + mtu + " , Status: " + status + " , Succeed: " + (status == BluetoothGatt.GATT_SUCCESS));
+        }
+
         public void onCharacteristicRead(BluetoothGatt gatt,
                                          BluetoothGattCharacteristic characteristic,
                                          int status) {
@@ -108,17 +114,25 @@ public class MyService extends Service {
             mMutable.postValue(tmp);
         }
 
-
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.i(TAG, "onServicesDiscovered: posting...!");
             readChar();
         }
     }
 
+    public void close() {
+        if (refGatt == null) {
+            return;
+        }
+        refGatt.close();
+        refGatt = null;
+    }
+
     @Override
     public void onDestroy() {
         super.onDestroy();
         Log.i(TAG, "onDestroy: service destroyed!");
+        close();
     }
 
     @Override
@@ -151,6 +165,11 @@ public class MyService extends Service {
             @Override
             public void handleMessage(Message msg) {
                 Log.i(TAG, "handleMessage: message" + msg.what);
+
+                if (msg.what == 100) {
+                    Log.i(TAG, "handleMessage: Shutting down service...!");
+                    stopSelf();
+                }
 
                 if (msg.what == GATT_GET_PROVISIONED) {
                     if (refGatt != null) {
@@ -203,12 +222,13 @@ public class MyService extends Service {
                         bluetoothLeScanner.stopScan(leScanCallback);
 
                         updateLiveData();
-                        broadcastUpdate(ACTION_GATT_DISCOVERED);
                     }
                 }, SCAN_PERIOD);
 
                 scanning = true;
                 bluetoothLeScanner.startScan(filterList, settings, leScanCallback);
+                clearLiveData(); //Update the UI thread
+
             } else {
                 scanning = false;
                 bluetoothLeScanner.stopScan(leScanCallback);
@@ -217,7 +237,28 @@ public class MyService extends Service {
     }
 
     private void updateLiveData() {
+        MutableLiveData<ArrayList<String>> mMutable= bleLiveData.getLiveDataSingletonDeviceArr();
 
+        ArrayList<String> deviceStringArr = new ArrayList<String>();
+        if (discoveredDevicesArray != null) {
+            for (discoveredDevice device : discoveredDevicesArray) {
+                deviceStringArr.add(device.getSerial());
+            }
+        }
+        // post to UI thread
+        mMutable.setValue(deviceStringArr);
+    }
+
+    private void clearLiveData() {
+        MutableLiveData<ArrayList<String>> mMutable= bleLiveData.getLiveDataSingletonDeviceArr();
+
+        // clear the old discovered devices
+        if (discoveredDevicesArray != null) {
+            discoveredDevicesArray.clear();
+        }
+
+        // post to UI thread
+        mMutable.setValue(new ArrayList<String>());
     }
 
     public void listServices() {
@@ -282,19 +323,6 @@ public class MyService extends Service {
         refGatt.readCharacteristic(bleChar);
     }
 
-    public ArrayList<String> getDevices() {
-        if (discoveredDevicesArray != null) {
-            ArrayList<String> deviceStringArr = new ArrayList<String>();
-            for (discoveredDevice device : discoveredDevicesArray) {
-                Log.i(TAG, "getDevices: Adding device:" + device.getSerial());
-                deviceStringArr.add(device.getSerial());
-            }
-            return deviceStringArr;
-        } else {
-            return null;
-        }
-    }
-
     // Device scan callback.
     private ScanCallback leScanCallback =
             new ScanCallback() {
@@ -333,5 +361,32 @@ public class MyService extends Service {
             currentName = new MutableLiveData<String>();
         }
         return currentName;
+    }
+    
+    @Override
+    public void onRebind(Intent intent){
+        super.onUnbind(intent);
+
+        if(mHandler!=null){
+            Log.i(TAG, "onRebind: Removing destroy self callback!");
+            mHandler.removeMessages(100);
+        }
+    }
+
+    @Override
+    public boolean onUnbind(Intent intent){
+        super.onUnbind(intent);
+        Log.i(TAG, "onUnbind: Unbounded!");
+        Message mMsg = new Message();
+        mMsg.what = 100;
+
+        if(mHandler!=null){
+            mHandler.sendMessageDelayed(mMsg, 500);
+        }
+        
+        // Default implementation does nothing and returns false
+        // If we return True, onRebind will be called when a 
+        // Client connects
+        return  true;
     }
 }

@@ -68,48 +68,9 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(ActivityIntent);
             } else if ( MyService.ACTION_GATT_DISCOVERED.equals(action)) {
                 Log.i(TAG, "onReceive: Finished scanning for BLE devices!!");
-                updateUiWithResults();
             }
         }
     };
-
-    private void updateUiWithResults(){
-        if (mService == null){
-            Log.i(TAG, "updateUiWithResults: Service Null - returning");
-            return;
-        }
-
-        final ArrayList<String> items =  mService.getDevices();
-        if (items == null){
-            Log.i(TAG, "updateUiWithResults: No Items found!");
-            return;
-        }
-
-        for (String s: items){
-            Log.i(TAG, "updateUiWithResults: " + s);
-        }
-
-        itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
-
-        final ListView listView = (ListView) findViewById(R.id.bleItems);
-        listView.setAdapter(itemsAdapter);
-
-        listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
-            @Override
-            public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
-                String DeviceSerialTemp = itemsAdapter.getItem(position);
-                if (DeviceSerialTemp != null){
-                    DeviceSerial = DeviceSerialTemp;
-                    Log.i(TAG, "onItemClick: setting DeviceSerial to " + DeviceSerial);
-                } else {
-                    Log.i(TAG, "onItemClick: Failed to find item");
-                }
-
-                Log.i(TAG, "onItemClick: ");
-                mService.BleConnect(position);
-            }
-        });
-    }
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -148,30 +109,27 @@ public class MainActivity extends AppCompatActivity {
                         99);
             }
         }
-/*
-        // set up the array list
+
+        // Set up the live data observer for the list of devices found.
         final ArrayList<String> items = new ArrayList<>();
         itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
-
         final ListView listView = (ListView) findViewById(R.id.bleItems);
         listView.setAdapter(itemsAdapter);
-
-        final MutableLiveData<ArrayList<discoveredDevice>> myMutable =  ListLiveData.get();
-
+        final MutableLiveData<ArrayList<String>> myMutable =  bleLiveData.getLiveDataSingletonDeviceArr();
         // Create the observer which updates the UI.
-        final Observer<ArrayList<discoveredDevice>> nameObserver = new Observer<ArrayList<discoveredDevice>>() {
+        final Observer<ArrayList<String>> nameObserver = new Observer<ArrayList<String>>() {
             @Override
-            public void onChanged(@Nullable final ArrayList<discoveredDevice> newItems) {
-                for(discoveredDevice device : newItems)
+            public void onChanged(@Nullable final ArrayList<String> newItems) {
+                Log.i(TAG, "onChanged: Called, sizeof newItems = " + newItems.size());
+                itemsAdapter.clear();
+                for(String device : newItems)
                 {
-                    System.out.println("here " + device.getSerial());
-                    itemsAdapter.add(device.getSerial());
+                    itemsAdapter.add(device);
                 }
             }
         };
 
         myMutable.observe(this, nameObserver);
-
         listView.setOnItemClickListener(new AdapterView.OnItemClickListener() {
             @Override
             public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
@@ -182,12 +140,10 @@ public class MainActivity extends AppCompatActivity {
                 } else {
                     Log.i(TAG, "onItemClick: Failed to find item");
                 }
-                
                 Log.i(TAG, "onItemClick: ");
                 mService.BleConnect(position);
             }
         });
-  */
     }
 
     @Override
@@ -230,9 +186,6 @@ public class MainActivity extends AppCompatActivity {
             MyService.LocalBinder binder = (MyService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
-
-            // after a configuration change, get the latest
-            updateUiWithResults();
         }
 
         @Override
