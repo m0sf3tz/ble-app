@@ -84,7 +84,7 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "onStart: Started!");
         super.onStart();
 
-        // start the BLE service
+        // start/connect to the BLE service
         Intent intent = new Intent(this, MyService.class);
         startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
@@ -182,7 +182,7 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onServiceConnected(ComponentName className,
                                        IBinder service) {
-            // We've bound to LocalService, cast the IBinder and get LocalService instance
+            // We've bound to BLE service, cast the IBinder and get BLE service instance
             MyService.LocalBinder binder = (MyService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;

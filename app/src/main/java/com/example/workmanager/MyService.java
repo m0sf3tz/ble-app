@@ -51,10 +51,12 @@ public class MyService extends Service {
     gattCallback gattCallback;
     static BluetoothGatt refGatt;
 
-    static final String TERA_FIRE_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
-    BluetoothGattCharacteristic deviceCloudKey;
+    static final String PROVISIONED_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
+    static final String WIFI_UUID        = "0000beef-0000-1000-8000-00805f9b34fb";
 
-    private static final int GATT_GET_PROVISIONED = 0;
+    private static final int GATT_READ_VALUES = 0;
+    private static final int GATT_SHUT_DOWN = 1;
+
 
     private static final int STATE_DISCONNECTED = 0;
     private static final int STATE_CONNECTING = 1;
@@ -71,6 +73,34 @@ public class MyService extends Service {
 
     class gattCallback extends BluetoothGattCallback {
         final static String TAG = "gattCallback";
+
+        // Updates the UI, Lets the user know if the device is provisioned
+        void updateUiStatus(BluetoothGattCharacteristic characteristic, final String uuid){
+            if (characteristic == null){
+                Log.i(TAG, "updateUiProvisioned: Arg == null!");
+                return;
+            }
+
+            byte[] arr = characteristic.getValue();
+            // This value is coming from the device, it will set it to 0xFF if the condition is true
+            // else 0x00.
+            Boolean status = false;
+            if (arr.length > 0) {
+                if (arr[0] == 0) {
+                    status = false;
+                } else {
+                    status = true;
+                }
+            }
+
+            if (uuid.equals(PROVISIONED_UUID)) {
+                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonProvisionedStatus();
+                mMutable.postValue(status);
+            } else if (uuid.equals(WIFI_UUID)) {
+                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonWifiStatus();
+                mMutable.postValue(status);
+            }
+        }
 
         public void onConnectionStateChange(BluetoothGatt gatt, int status,
                                             int newState) {
@@ -100,26 +130,18 @@ public class MyService extends Service {
                                          BluetoothGattCharacteristic characteristic,
                                          int status) {
 
-            byte[] arr = characteristic.getValue();
-            MutableLiveData<Boolean> mMutable= bleLiveData.getLiveDataSingletonProvisionedStatus();
-
-            Boolean tmp = false;
-            if (arr.length > 0){
-                if (arr[0] == 0 ){
-                    tmp = false;
-                } else {
-                    tmp = true;
-                }
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                updateUiStatus(characteristic, characteristic.getUuid().toString());
             }
-            mMutable.postValue(tmp);
         }
 
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-            Log.i(TAG, "onServicesDiscovered: posting...!");
-            readChar();
+            Log.i(TAG, "onServicesDiscovered");
+            mHandler.sendEmptyMessageDelayed(GATT_READ_VALUES, 100);
         }
     }
 
+    // clean up bluetooth against the OS
     public void close() {
         if (refGatt == null) {
             return;
@@ -166,14 +188,15 @@ public class MyService extends Service {
             public void handleMessage(Message msg) {
                 Log.i(TAG, "handleMessage: message" + msg.what);
 
-                if (msg.what == 100) {
+                if (msg.what == GATT_SHUT_DOWN) {
                     Log.i(TAG, "handleMessage: Shutting down service...!");
                     stopSelf();
                 }
 
-                if (msg.what == GATT_GET_PROVISIONED) {
+                if (msg.what == GATT_READ_VALUES) {
                     if (refGatt != null) {
                         readChar();
+                        mHandler.sendEmptyMessageDelayed(GATT_READ_VALUES, 500);
                     }
                 }
             }
@@ -256,7 +279,6 @@ public class MyService extends Service {
         if (discoveredDevicesArray != null) {
             discoveredDevicesArray.clear();
         }
-
         // post to UI thread
         mMutable.setValue(new ArrayList<String>());
     }
@@ -294,7 +316,7 @@ public class MyService extends Service {
             //get a list of characteristics
             List<BluetoothGattCharacteristic> characteristicsList = service.getCharacteristics();
             for (BluetoothGattCharacteristic characteristics : characteristicsList) {
-                if (characteristics.getUuid().toString().equals(TERA_FIRE_UUID)) {
+                if (characteristics.getUuid().toString().equals(WIFI_UUID)) {
                     return characteristics;
                 }
             }

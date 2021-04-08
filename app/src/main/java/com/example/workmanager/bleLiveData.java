@@ -9,6 +9,7 @@ import java.util.List;
 
 public class bleLiveData {
     private static MutableLiveData<Boolean> sInstanceProvisioned;
+    private static MutableLiveData<Boolean> sIntanceWifi;
     private static MutableLiveData<ArrayList<String>> sInstanceDeviceArr;
 
     public static MutableLiveData<Boolean> getLiveDataSingletonProvisionedStatus() {
@@ -16,6 +17,13 @@ public class bleLiveData {
             sInstanceProvisioned = new MutableLiveData<Boolean>();
         }
         return sInstanceProvisioned;
+    }
+
+    public static MutableLiveData<Boolean> getLiveDataSingletonWifiStatus() {
+        if (sIntanceWifi == null) {
+            sIntanceWifi = new MutableLiveData<Boolean>();
+        }
+        return sIntanceWifi;
     }
 
     public static MutableLiveData<ArrayList<String>> getLiveDataSingletonDeviceArr() {
