@@ -2,18 +2,27 @@ package com.example.workmanager;
 
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
+import androidx.core.app.ActivityCompat;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 
+import android.Manifest;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.pm.PackageManager;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
 import android.os.Bundle;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Message;
 import android.util.Log;
+import android.view.View;
 import android.widget.CheckBox;
 import android.widget.TextView;
 
@@ -21,6 +30,7 @@ public class GattConnected extends AppCompatActivity {
     private final static String TAG = "GattConnected";
     MyService mService;
     boolean mBound = false;
+    private Handler bleServiceHandler = new Handler();
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
@@ -44,6 +54,19 @@ public class GattConnected extends AppCompatActivity {
         startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
+        Runnable poll = new Runnable() {
+            @Override
+            public void run() {
+                if(mBound){
+                    Log.i(TAG, "run: polling device characteristics.. ");
+                    mService.pollDeviceStats();
+                    bleServiceHandler.postDelayed(this, 1000);
+                } else {
+                    Log.i(TAG, "run: Won't poll - not bound");
+                }
+            }
+        };
+        bleServiceHandler.postDelayed(poll, 1000);
     }
 
     @Override
@@ -84,6 +107,34 @@ public class GattConnected extends AppCompatActivity {
             }
         };
         mLiveDataWifi.observe(this, wifiObserver);
+    }
+
+    public void getLocation(View v) {
+        // Get the location manager
+        LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
+        Criteria criteria = new Criteria();
+        String bestProvider = locationManager.getBestProvider(criteria, false);
+        if (ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED && ActivityCompat.checkSelfPermission(this, Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            // TODO: Consider calling
+            //    ActivityCompat#requestPermissions
+            // here to request the missing permissions, and then overriding
+            //   public void onRequestPermissionsResult(int requestCode, String[] permissions,
+            //                                          int[] grantResults)
+            // to handle the case where the user grants the permission. See the documentation
+            // for ActivityCompat#requestPermissions for more details.
+            return;
+        }
+        Location location = locationManager.getLastKnownLocation(bestProvider);
+        Double lat = 0.0,lon = 0.0;
+        try {
+            lat = location.getLatitude ();
+            lon = location.getLongitude ();
+        }
+        catch (NullPointerException e){
+            e.printStackTrace();
+        }
+
+        Log.i(TAG, "getLocation: lat = " + lat.toString() + "long = " + lon.toString());
     }
 
     @Override

@@ -15,7 +15,12 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/AppTheme">
-        <activity android:name=".GattConnected"></activity>
+        <service
+            android:name=".netService"
+            android:enabled="true"
+            android:exported="false"></service>
+
+        <activity android:name=".GattConnected" />
 
         <service
             android:name=".MyService"

@@ -31,6 +31,7 @@ import java.util.List;
 public class MyService extends Service {
     final static String TAG = "MyService";
     private Handler mHandler;
+    private final IBinder binder = new LocalBinder();
 
     // When filtering for advertising packets, we filter for devices that have device name set to
     // TERA_FIRE_GUARD _AND_ manufacturer ID set to 52651
@@ -38,7 +39,6 @@ public class MyService extends Service {
     final static String DEVICE_NAME = "TERA_FIRE_GUARD";
     final static int MANUFACTURER_ID = 52651;
 
-    private final IBinder binder = new LocalBinder();
     private boolean scanning;
     private static final long SCAN_PERIOD = 2000;
     BluetoothAdapter bluetoothAdapter = null;
@@ -54,7 +54,6 @@ public class MyService extends Service {
     static final String PROVISIONED_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
     static final String WIFI_UUID        = "0000beef-0000-1000-8000-00805f9b34fb";
 
-    private static final int GATT_READ_VALUES = 0;
     private static final int GATT_SHUT_DOWN = 1;
 
 
@@ -70,6 +69,10 @@ public class MyService extends Service {
             "com.example.workManager.le.ACTION_GATT_DISCOVERED";
 
     private MutableLiveData<String> currentName;
+
+    public void pollDeviceStats() {
+        readChar();
+    }
 
     class gattCallback extends BluetoothGattCallback {
         final static String TAG = "gattCallback";
@@ -137,7 +140,6 @@ public class MyService extends Service {
 
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.i(TAG, "onServicesDiscovered");
-            mHandler.sendEmptyMessageDelayed(GATT_READ_VALUES, 100);
         }
     }
 
@@ -166,6 +168,12 @@ public class MyService extends Service {
         if (bluetoothManager != null) {
             bluetoothAdapter = bluetoothManager.getAdapter();
         }
+
+        if(bluetoothAdapter == null) {
+            Log.i(TAG, "onCreate: Bluetooth adaptor NULL - not much to do... ");
+            return;
+        }
+
         bluetoothLeScanner = bluetoothAdapter.getBluetoothLeScanner();
         ScanFilter filter = new ScanFilter.Builder().setDeviceName(DEVICE_NAME).build();
         filterList = new ArrayList<>();
@@ -191,13 +199,6 @@ public class MyService extends Service {
                 if (msg.what == GATT_SHUT_DOWN) {
                     Log.i(TAG, "handleMessage: Shutting down service...!");
                     stopSelf();
-                }
-
-                if (msg.what == GATT_READ_VALUES) {
-                    if (refGatt != null) {
-                        readChar();
-                        mHandler.sendEmptyMessageDelayed(GATT_READ_VALUES, 500);
-                    }
                 }
             }
         };
@@ -411,4 +412,5 @@ public class MyService extends Service {
         // Client connects
         return  true;
     }
+
 }

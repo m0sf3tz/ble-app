@@ -20,6 +20,8 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.location.Criteria;
+import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -36,7 +38,7 @@ import java.util.ArrayList;
 class myFactory implements ViewModelProvider.Factory {
     private Application mApplication;
 
-    myFactory (Application application) {
+    myFactory(Application application) {
         this.mApplication = application;
     }
 
@@ -55,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
     boolean mBound = false;
     ArrayAdapter<String> itemsAdapter;
     private String DeviceSerial = "NULL";
-    
+
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
@@ -66,7 +68,7 @@ public class MainActivity extends AppCompatActivity {
                 Intent ActivityIntent = new Intent(getApplicationContext(), GattConnected.class);
                 ActivityIntent.putExtra(INTENT_SERIAL_MESSAGE, DeviceSerial);
                 startActivity(ActivityIntent);
-            } else if ( MyService.ACTION_GATT_DISCOVERED.equals(action)) {
+            } else if (MyService.ACTION_GATT_DISCOVERED.equals(action)) {
                 Log.i(TAG, "onReceive: Finished scanning for BLE devices!!");
             }
         }
@@ -77,6 +79,8 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "onCreate: Created!");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
+        byte arr[] = {0, 1, 2, 3, 4};
+        crc16.getCrc(arr);
     }
 
     @Override
@@ -115,15 +119,14 @@ public class MainActivity extends AppCompatActivity {
         itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
         final ListView listView = (ListView) findViewById(R.id.bleItems);
         listView.setAdapter(itemsAdapter);
-        final MutableLiveData<ArrayList<String>> myMutable =  bleLiveData.getLiveDataSingletonDeviceArr();
+        final MutableLiveData<ArrayList<String>> myMutable = bleLiveData.getLiveDataSingletonDeviceArr();
         // Create the observer which updates the UI.
         final Observer<ArrayList<String>> nameObserver = new Observer<ArrayList<String>>() {
             @Override
             public void onChanged(@Nullable final ArrayList<String> newItems) {
                 Log.i(TAG, "onChanged: Called, sizeof newItems = " + newItems.size());
                 itemsAdapter.clear();
-                for(String device : newItems)
-                {
+                for (String device : newItems) {
                     itemsAdapter.add(device);
                 }
             }
@@ -134,7 +137,7 @@ public class MainActivity extends AppCompatActivity {
             @Override
             public void onItemClick(AdapterView<?> arg0, View arg1, int position, long arg3) {
                 String DeviceSerialTemp = itemsAdapter.getItem(position);
-                if (DeviceSerialTemp != null){
+                if (DeviceSerialTemp != null) {
                     DeviceSerial = DeviceSerialTemp;
                     Log.i(TAG, "onItemClick: setting DeviceSerial to " + DeviceSerial);
                 } else {
@@ -149,32 +152,16 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if ( mBound ) {
+        if (mBound) {
             unbindService(connection);
             mBound = false;
         }
     }
 
     public void startScan(View v) {
-        Log.i(TAG, "startScan: Starting Scan!" );
-        if ( mService != null ) {
+        Log.i(TAG, "startScan: Starting Scan!");
+        if (mService != null) {
             mService.BleScan();
-        }
-    }
-
-    public void listUuidService(View v) {
-        Log.i(TAG, "Setting value!!");
-
-        if ( mService != null ) {
-            mService.listServices();
-        }
-    }
-
-    public void setChar(View v) {
-        Log.i(TAG, "Setting value!!");
-
-        if ( mService != null ) {
-            mService.setChar();
         }
     }
 
@@ -204,11 +191,6 @@ public class MainActivity extends AppCompatActivity {
     protected void onPause() {
         super.onPause();
         unregisterReceiver(mGattUpdateReceiver);
-    }
-    
-    public void read(View v){
-        Log.i(TAG, "read: !");
-        mService.readChar();
     }
 
     private static IntentFilter makeGattUpdateIntentFilter() {
