@@ -11,7 +11,6 @@ import androidx.lifecycle.ViewModel;
 import androidx.lifecycle.ViewModelProvider;
 
 import android.Manifest;
-import android.app.Activity;
 import android.app.Application;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
@@ -20,8 +19,6 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
-import android.location.Criteria;
-import android.location.Location;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -29,31 +26,15 @@ import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
-import android.widget.EditText;
 import android.widget.ListView;
-import android.widget.Toast;
 
 import java.util.ArrayList;
-
-class myFactory implements ViewModelProvider.Factory {
-    private Application mApplication;
-
-    myFactory(Application application) {
-        this.mApplication = application;
-    }
-
-    @NonNull
-    @Override
-    public <T extends ViewModel> T create(@NonNull Class<T> modelClass) {
-        return (T) new MyViewModel(mApplication);
-    }
-}
 
 public class MainActivity extends AppCompatActivity {
     private final String TAG = "MainActivity";
     public final static String INTENT_SERIAL_MESSAGE = "INTENT_SERIAL_KEY";
     private MyViewModel model;
-    MyService mService;
+    bleService mService;
     boolean mBound = false;
     ArrayAdapter<String> itemsAdapter;
     private String DeviceSerial = "NULL";
@@ -62,13 +43,13 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
-            if (MyService.ACTION_GATT_CONNECTED.equals(action)) {
+            if (bleService.ACTION_GATT_CONNECTED.equals(action)) {
                 Log.i(TAG, "onReceive: Connected to GATT server!");
 
                 Intent ActivityIntent = new Intent(getApplicationContext(), GattConnected.class);
                 ActivityIntent.putExtra(INTENT_SERIAL_MESSAGE, DeviceSerial);
                 startActivity(ActivityIntent);
-            } else if (MyService.ACTION_GATT_DISCOVERED.equals(action)) {
+            } else if (bleService.ACTION_GATT_DISCOVERED.equals(action)) {
                 Log.i(TAG, "onReceive: Finished scanning for BLE devices!!");
             }
         }
@@ -89,7 +70,7 @@ public class MainActivity extends AppCompatActivity {
         super.onStart();
 
         // start/connect to the BLE service
-        Intent intent = new Intent(this, MyService.class);
+        Intent intent = new Intent(this, bleService.class);
         startService(intent);
         bindService(intent, connection, Context.BIND_AUTO_CREATE);
 
@@ -169,8 +150,9 @@ public class MainActivity extends AppCompatActivity {
         @Override
         public void onServiceConnected(ComponentName className,
                                        IBinder service) {
+            Log.i(TAG, "onServiceConnected: " + className.getShortClassName());
             // We've bound to BLE service, cast the IBinder and get BLE service instance
-            MyService.LocalBinder binder = (MyService.LocalBinder) service;
+            bleService.LocalBinder binder = (bleService.LocalBinder) service;
             mService = binder.getService();
             mBound = true;
         }
@@ -195,7 +177,7 @@ public class MainActivity extends AppCompatActivity {
 
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(MyService.ACTION_GATT_CONNECTED);
+        intentFilter.addAction(bleService.ACTION_GATT_CONNECTED);
         //intentFilter.addAction(MyService.ACTION_GATT_DISCOVERED);
         //intentFilter.addAction(MyService.ACTION_GATT_DISCONNECTED);
         return intentFilter;

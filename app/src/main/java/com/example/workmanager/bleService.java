@@ -13,8 +13,10 @@ import android.bluetooth.le.ScanCallback;
 import android.bluetooth.le.ScanFilter;
 import android.bluetooth.le.ScanResult;
 import android.bluetooth.le.ScanSettings;
+import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
@@ -24,123 +26,84 @@ import android.util.Log;
 import android.util.SparseArray;
 
 import androidx.lifecycle.MutableLiveData;
+
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 
-public class MyService extends Service {
-    final static String TAG = "MyService";
-    private Handler mHandler;
-    private final IBinder binder = new LocalBinder();
-
-    // When filtering for advertising packets, we filter for devices that have device name set to
-    // TERA_FIRE_GUARD _AND_ manufacturer ID set to 52651
-    // this is how we uniquely identify TeraHelion Devices
-    final static String DEVICE_NAME = "TERA_FIRE_GUARD";
-    final static int MANUFACTURER_ID = 52651;
-
-    private boolean scanning;
-    private static final long SCAN_PERIOD = 2000;
-    BluetoothAdapter bluetoothAdapter = null;
-    private BluetoothLeScanner bluetoothLeScanner;
-    private Handler handler = new Handler();
-    private ArrayList<ScanFilter> filterList;
-    private ScanSettings settings;
-
-    private static ArrayList<discoveredDevice> discoveredDevicesArray = new ArrayList<discoveredDevice>();
-    gattCallback gattCallback;
-    static BluetoothGatt refGatt;
-
-    static final String PROVISIONED_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
-    static final String WIFI_UUID        = "0000beef-0000-1000-8000-00805f9b34fb";
-
-    private static final int GATT_SHUT_DOWN = 1;
-
-
-    private static final int STATE_DISCONNECTED = 0;
-    private static final int STATE_CONNECTING = 1;
-    private static final int STATE_CONNECTED = 2;
-
+public class bleService extends Service {
     public final static String ACTION_GATT_CONNECTED =
             "com.example.workManager.le.ACTION_GATT_CONNECTED";
     public final static String ACTION_GATT_DISCONNECTED =
             "com.example.workManager.le.ACTION_GATT_DISCONNECTED";
     public final static String ACTION_GATT_DISCOVERED =
             "com.example.workManager.le.ACTION_GATT_DISCOVERED";
-
+    final static String TAG = "MyService";
+    // When filtering for advertising packets, we filter for devices that have device name set to
+    // TERA_FIRE_GUARD _AND_ manufacturer ID set to 52651
+    // this is how we uniquely identify TeraHelion Devices
+    final static String DEVICE_NAME = "TERA_FIRE_GUARD";
+    final static int MANUFACTURER_ID = 52651;
+    static final String PROVISIONED_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
+    static final String WIFI_UUID = "0000beef-0000-1000-8000-00805f9b34fb";
+    private static final long SCAN_PERIOD = 2000;
+    private static final int GATT_SHUT_DOWN = 1;
+    private static final int STATE_DISCONNECTED = 0;
+    private static final int STATE_CONNECTING = 1;
+    private static final int STATE_CONNECTED = 2;
+    static BluetoothGatt refGatt;
+    private static ArrayList<discoveredDevice> discoveredDevicesArray = new ArrayList<discoveredDevice>();
+    private final IBinder binder = new LocalBinder();
+    BluetoothAdapter bluetoothAdapter = null;
+    gattCallback gattCallback;
+    private Handler mHandler;
+    private boolean scanning;
+    private BluetoothLeScanner bluetoothLeScanner;
+    private Handler handler = new Handler();
+    private ArrayList<ScanFilter> filterList;
+    private ScanSettings settings;
     private MutableLiveData<String> currentName;
+
+    private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            final String action = intent.getAction();
+            if (netService.REQUEST_BLE_PASS_DATA.equals(action)) {
+                Log.i(TAG, "onReceive: Will pass data to device!");
+                byte b[]= intent.getByteArrayExtra("chunk" );
+                Log.i(TAG, "onReceive: " + b[0]);
+            } 
+        }
+    };
+
+    // Device scan callback.
+    private ScanCallback leScanCallback =
+            new ScanCallback() {
+                @Override
+                public void onScanResult(int callbackType, ScanResult result) {
+                    super.onScanResult(callbackType, result);
+                    Log.i(TAG, "onScanResult: " + result.getDevice() + "specfic = " + result.getScanRecord().getManufacturerSpecificData());
+
+                    // In android, the Manufacturer specific Data is stored in a "hash map"
+                    // were the key is the first 2 bytes of the Manufacturer specific data and
+                    // the value is the remaining bytes, hence, for us, we will always fix the
+                    // first two bytes to MANUFACTURER_ID and use the rest of this field to store
+                    // our serial
+                    SparseArray<byte[]> sb = result.getScanRecord().getManufacturerSpecificData();
+                    byte[] arr = sb.get(MANUFACTURER_ID);
+                    String serialFound = new String(arr, StandardCharsets.UTF_8);
+
+                    discoveredDevicesArray.add(new discoveredDevice(serialFound, result.getDevice()));
+                }
+
+                @Override
+                public void onScanFailed(final int errorCode) {
+                    Log.e(TAG, "onScanFailed: Failed to scan!");
+                }
+            };
 
     public void pollDeviceStats() {
         readChar();
-    }
-
-    class gattCallback extends BluetoothGattCallback {
-        final static String TAG = "gattCallback";
-
-        // Updates the UI, Lets the user know if the device is provisioned
-        void updateUiStatus(BluetoothGattCharacteristic characteristic, final String uuid){
-            if (characteristic == null){
-                Log.i(TAG, "updateUiProvisioned: Arg == null!");
-                return;
-            }
-
-            byte[] arr = characteristic.getValue();
-            // This value is coming from the device, it will set it to 0xFF if the condition is true
-            // else 0x00.
-            Boolean status = false;
-            if (arr.length > 0) {
-                if (arr[0] == 0) {
-                    status = false;
-                } else {
-                    status = true;
-                }
-            }
-
-            if (uuid.equals(PROVISIONED_UUID)) {
-                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonProvisionedStatus();
-                mMutable.postValue(status);
-            } else if (uuid.equals(WIFI_UUID)) {
-                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonWifiStatus();
-                mMutable.postValue(status);
-            }
-        }
-
-        public void onConnectionStateChange(BluetoothGatt gatt, int status,
-                                            int newState) {
-            Log.i(TAG, "onConnectionStateChange: " + status + newState);
-
-            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED) {
-                Log.i(TAG, "onConnectionStateChange: Connected!");
-                MyService.refGatt = gatt;
-                gatt.discoverServices();
-                broadcastUpdate(ACTION_GATT_CONNECTED);
-            }
-
-            if (newState == BluetoothGatt.STATE_DISCONNECTED) {
-                Log.i(TAG, "onConnectionStateChange: STATE_DISCONNECTED!");
-                MyService.refGatt = null;
-                broadcastUpdate(ACTION_GATT_DISCONNECTED);
-            }
-        }
-
-        @Override
-        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
-            super.onMtuChanged(gatt, mtu, status);
-            Log.i(TAG, "New MTU: " + mtu + " , Status: " + status + " , Succeed: " + (status == BluetoothGatt.GATT_SUCCESS));
-        }
-
-        public void onCharacteristicRead(BluetoothGatt gatt,
-                                         BluetoothGattCharacteristic characteristic,
-                                         int status) {
-
-            if (status == BluetoothGatt.GATT_SUCCESS) {
-                updateUiStatus(characteristic, characteristic.getUuid().toString());
-            }
-        }
-
-        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
-            Log.i(TAG, "onServicesDiscovered");
-        }
     }
 
     // clean up bluetooth against the OS
@@ -156,6 +119,7 @@ public class MyService extends Service {
     public void onDestroy() {
         super.onDestroy();
         Log.i(TAG, "onDestroy: service destroyed!");
+        unregisterReceiver(broadcastReceiver);
         close();
     }
 
@@ -169,7 +133,7 @@ public class MyService extends Service {
             bluetoothAdapter = bluetoothManager.getAdapter();
         }
 
-        if(bluetoothAdapter == null) {
+        if (bluetoothAdapter == null) {
             Log.i(TAG, "onCreate: Bluetooth adaptor NULL - not much to do... ");
             return;
         }
@@ -202,13 +166,8 @@ public class MyService extends Service {
                 }
             }
         };
-    }
 
-    public class LocalBinder extends Binder {
-        MyService getService() {
-            // Return this instance of LocalService so clients can call public methods
-            return MyService.this;
-        }
+        registerReceiver(broadcastReceiver, getItentFilter());
     }
 
     @Override
@@ -261,7 +220,7 @@ public class MyService extends Service {
     }
 
     private void updateLiveData() {
-        MutableLiveData<ArrayList<String>> mMutable= bleLiveData.getLiveDataSingletonDeviceArr();
+        MutableLiveData<ArrayList<String>> mMutable = bleLiveData.getLiveDataSingletonDeviceArr();
 
         ArrayList<String> deviceStringArr = new ArrayList<String>();
         if (discoveredDevicesArray != null) {
@@ -274,7 +233,7 @@ public class MyService extends Service {
     }
 
     private void clearLiveData() {
-        MutableLiveData<ArrayList<String>> mMutable= bleLiveData.getLiveDataSingletonDeviceArr();
+        MutableLiveData<ArrayList<String>> mMutable = bleLiveData.getLiveDataSingletonDeviceArr();
 
         // clear the old discovered devices
         if (discoveredDevicesArray != null) {
@@ -346,32 +305,6 @@ public class MyService extends Service {
         refGatt.readCharacteristic(bleChar);
     }
 
-    // Device scan callback.
-    private ScanCallback leScanCallback =
-            new ScanCallback() {
-                @Override
-                public void onScanResult(int callbackType, ScanResult result) {
-                    super.onScanResult(callbackType, result);
-                    Log.i(TAG, "onScanResult: " + result.getDevice() + "specfic = " + result.getScanRecord().getManufacturerSpecificData());
-
-                    // In android, the Manufacturer specific Data is stored in a "hash map"
-                    // were the key is the first 2 bytes of the Manufacturer specific data and
-                    // the value is the remaining bytes, hence, for us, we will always fix the
-                    // first two bytes to MANUFACTURER_ID and use the rest of this field to store
-                    // our serial
-                    SparseArray<byte[]> sb = result.getScanRecord().getManufacturerSpecificData();
-                    byte arr[] = sb.get(MANUFACTURER_ID);
-                    String serialFound = new String(arr, StandardCharsets.UTF_8);
-
-                    discoveredDevicesArray.add(new discoveredDevice(serialFound, result.getDevice()));
-                }
-
-                @Override
-                public void onScanFailed(final int errorCode) {
-                    Log.e(TAG, "onScanFailed: Failed to scan!");
-                }
-            };
-
     // Sends broadcasts to the main activity
     private void broadcastUpdate(final String action) {
         Log.i(TAG, "broadcastUpdate: sending: " + action);
@@ -385,32 +318,109 @@ public class MyService extends Service {
         }
         return currentName;
     }
-    
+
     @Override
-    public void onRebind(Intent intent){
+    public void onRebind(Intent intent) {
         super.onUnbind(intent);
 
-        if(mHandler!=null){
+        if (mHandler != null) {
             Log.i(TAG, "onRebind: Removing destroy self callback!");
             mHandler.removeMessages(100);
         }
     }
 
     @Override
-    public boolean onUnbind(Intent intent){
+    public boolean onUnbind(Intent intent) {
         super.onUnbind(intent);
         Log.i(TAG, "onUnbind: Unbounded!");
         Message mMsg = new Message();
         mMsg.what = 100;
 
-        if(mHandler!=null){
+        if (mHandler != null) {
             mHandler.sendMessageDelayed(mMsg, 500);
         }
-        
+
         // Default implementation does nothing and returns false
-        // If we return True, onRebind will be called when a 
+        // If we return True, onRebind will be called when a
         // Client connects
-        return  true;
+        return true;
     }
 
+    class gattCallback extends BluetoothGattCallback {
+        final static String TAG = "gattCallback";
+
+        // Updates the UI, Lets the user know if the device is provisioned
+        void updateUiStatus(BluetoothGattCharacteristic characteristic, final String uuid) {
+            if (characteristic == null) {
+                Log.i(TAG, "updateUiProvisioned: Arg == null!");
+                return;
+            }
+
+            byte[] arr = characteristic.getValue();
+            // This value is coming from the device, it will set it to 0xFF if the condition is true
+            // else 0x00.
+            Boolean status = false;
+            if (arr.length > 0) {
+                status = arr[0] != 0;
+            }
+
+            if (uuid.equals(PROVISIONED_UUID)) {
+                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonProvisionedStatus();
+                mMutable.postValue(status);
+            } else if (uuid.equals(WIFI_UUID)) {
+                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonWifiStatus();
+                mMutable.postValue(status);
+            }
+        }
+
+        public void onConnectionStateChange(BluetoothGatt gatt, int status,
+                                            int newState) {
+            Log.i(TAG, "onConnectionStateChange: " + status + newState);
+
+            if (status == BluetoothGatt.GATT_SUCCESS && newState == BluetoothGatt.STATE_CONNECTED) {
+                Log.i(TAG, "onConnectionStateChange: Connected!");
+                bleService.refGatt = gatt;
+                gatt.discoverServices();
+                broadcastUpdate(ACTION_GATT_CONNECTED);
+            }
+
+            if (newState == BluetoothGatt.STATE_DISCONNECTED) {
+                Log.i(TAG, "onConnectionStateChange: STATE_DISCONNECTED!");
+                bleService.refGatt = null;
+                broadcastUpdate(ACTION_GATT_DISCONNECTED);
+            }
+        }
+
+        @Override
+        public void onMtuChanged(BluetoothGatt gatt, int mtu, int status) {
+            super.onMtuChanged(gatt, mtu, status);
+            Log.i(TAG, "New MTU: " + mtu + " , Status: " + status + " , Succeed: " + (status == BluetoothGatt.GATT_SUCCESS));
+        }
+
+        public void onCharacteristicRead(BluetoothGatt gatt,
+                                         BluetoothGattCharacteristic characteristic,
+                                         int status) {
+
+            if (status == BluetoothGatt.GATT_SUCCESS) {
+                updateUiStatus(characteristic, characteristic.getUuid().toString());
+            }
+        }
+
+        public void onServicesDiscovered(BluetoothGatt gatt, int status) {
+            Log.i(TAG, "onServicesDiscovered");
+        }
+    }
+
+    public class LocalBinder extends Binder {
+        bleService getService() {
+            // Return this instance of LocalService so clients can call public methods
+            return bleService.this;
+        }
+    }
+
+    private static IntentFilter getItentFilter() {
+        final IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(netService.REQUEST_BLE_PASS_DATA);
+        return intentFilter;
+    }
 }

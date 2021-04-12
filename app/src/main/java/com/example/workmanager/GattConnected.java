@@ -20,23 +20,33 @@ import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
-import android.os.Message;
 import android.util.Log;
 import android.view.View;
+import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.TextView;
 
+import java.io.IOException;
+import java.text.Normalizer;
+import java.util.concurrent.TimeUnit;
+
+import okhttp3.*;
+
 public class GattConnected extends AppCompatActivity {
-    private final static String TAG = "GattConnected";
-    MyService mService;
-    boolean mBound = false;
+    bleService mBle;
+    boolean mBoundBleService = false;
+    netService mNet;
+    boolean mBoundNetService = false;
     private Handler bleServiceHandler = new Handler();
+    private final static String TAG = "GattConnected";
+    private final static String SERVICE_NAME_SHORT_BLE = ".bleService";
+    private final static String SERVICE_NAME_SHORT_NET = ".netService";
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
         public void onReceive(Context context, Intent intent) {
             final String action = intent.getAction();
-            if (MyService.ACTION_GATT_DISCONNECTED.equals(action)) {
+            if (bleService.ACTION_GATT_DISCONNECTED.equals(action)) {
                 Log.i(TAG, "onReceive: Disconnected from GATT server!");
 
                 Intent ActivityIntent = new Intent(getApplicationContext(), MainActivity.class);
@@ -45,28 +55,74 @@ public class GattConnected extends AppCompatActivity {
         }
     };
 
+    private ServiceConnection bleConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className,
+                                       IBinder service) {
+
+            Log.i(TAG, "onServiceConnected: Connected to BLE service!");
+            // We've bound to BLE service, cast the IBinder and get BLE service instance
+            bleService.LocalBinder binder = (bleService.LocalBinder) service;
+            mBle = binder.getService();
+            mBoundBleService = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            mBoundBleService = false;
+        }
+    };
+
+    private ServiceConnection netConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className,
+                                       IBinder service) {
+            Log.i(TAG, "onServiceConnected: Connected to NET service!");
+            netService.LocalBinder binder = (netService.LocalBinder) service;
+            mNet = binder.getService();
+            mBoundNetService = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) {
+            mBoundNetService = false;
+        }
+    };
+
+    private static IntentFilter makeGattUpdateIntentFilter() {
+        final IntentFilter intentFilter = new IntentFilter();
+        intentFilter.addAction(bleService.ACTION_GATT_DISCONNECTED);
+        return intentFilter;
+    }
+
     @Override
-    public void onStart(){
+    public void onStart() {
         super.onStart();
 
         // start/connect to the BLE service
-        Intent intent = new Intent(this, MyService.class);
+        Intent intent = new Intent(this, bleService.class);
         startService(intent);
-        bindService(intent, connection, Context.BIND_AUTO_CREATE);
+        bindService(intent, bleConnection, Context.BIND_AUTO_CREATE);
+
+        // start/connect to the net service
+        intent = new Intent(this, netService.class);
+        startService(intent);
+        bindService(intent, netConnection, Context.BIND_AUTO_CREATE);
 
         Runnable poll = new Runnable() {
             @Override
             public void run() {
-                if(mBound){
+                if (mBoundBleService) {
                     Log.i(TAG, "run: polling device characteristics.. ");
-                    mService.pollDeviceStats();
+                    mBle.pollDeviceStats();
                     bleServiceHandler.postDelayed(this, 1000);
                 } else {
                     Log.i(TAG, "run: Won't poll - not bound");
                 }
             }
         };
-        bleServiceHandler.postDelayed(poll, 1000);
+        // uncomment to opll!
+        // bleServiceHandler.postDelayed(poll, 1000);
     }
 
     @Override
@@ -75,10 +131,10 @@ public class GattConnected extends AppCompatActivity {
         setContentView(R.layout.activity_gatt_connected);
 
         Intent intent = getIntent();
-        if ( intent != null ) {
+        if (intent != null) {
             String serial = intent.getStringExtra(MainActivity.INTENT_SERIAL_MESSAGE);
             TextView serialDisplay = (TextView) findViewById(R.id.serialTextView);
-            if (serialDisplay != null){
+            if (serialDisplay != null) {
                 serialDisplay.setText("Connected to: " + serial);
             }
         }
@@ -125,12 +181,11 @@ public class GattConnected extends AppCompatActivity {
             return;
         }
         Location location = locationManager.getLastKnownLocation(bestProvider);
-        Double lat = 0.0,lon = 0.0;
+        Double lat = 0.0, lon = 0.0;
         try {
-            lat = location.getLatitude ();
-            lon = location.getLongitude ();
-        }
-        catch (NullPointerException e){
+            lat = location.getLatitude();
+            lon = location.getLongitude();
+        } catch (NullPointerException e) {
             e.printStackTrace();
         }
 
@@ -152,31 +207,18 @@ public class GattConnected extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if ( mBound ) {
-            unbindService(connection);
-            mBound = false;
+        if (mBoundBleService) {
+            unbindService(bleConnection);
+            mBoundBleService = false;
+        }
+        if (mBoundNetService) {
+            unbindService(netConnection);
+            mBoundBleService = false;
         }
     }
 
-    private static IntentFilter makeGattUpdateIntentFilter() {
-        final IntentFilter intentFilter = new IntentFilter();
-        intentFilter.addAction(MyService.ACTION_GATT_DISCONNECTED);
-        return intentFilter;
+    public void sendCommand(View v) {
+        Log.i(TAG, "sen: sending!");
+        mNet.provisionDevice();
     }
-
-    private ServiceConnection connection = new ServiceConnection() {
-        @Override
-        public void onServiceConnected(ComponentName className,
-                                       IBinder service) {
-            // We've bound to BLE service, cast the IBinder and get BLE service instance
-            MyService.LocalBinder binder = (MyService.LocalBinder) service;
-            mService = binder.getService();
-            mBound = true;
-        }
-
-        @Override
-        public void onServiceDisconnected(ComponentName arg0) {
-            mBound = false;
-        }
-    };
 }
