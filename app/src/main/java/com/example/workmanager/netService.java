@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit;
 import okhttp3.Call;
 import okhttp3.FormBody;
 import okhttp3.HttpUrl;
+import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
@@ -29,7 +30,8 @@ public class netService extends Service {
     static final String URL_IP = "192.168.0.189";
     static final int URL_POR = 3000;
     static final String REQUEST_BLE_PASS_DATA = "REQUEST_BLE_PASS_DATA";
-
+    public static final MediaType JSON
+            = MediaType.parse("application/json; charset=utf-8");
     public netService() {
     }
 
@@ -57,13 +59,10 @@ public class netService extends Service {
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
                 .build();
-        RequestBody formBody = new FormBody.Builder()
-                .add("uname", "abcd123")
-                .add("psw", "abcd123")
-                .build();
+        RequestBody body = RequestBody.create(JSON, createJsonProvisionRequest().toString());
         Request postRequest = new Request.Builder()
                 .url(URL_FULL)
-                .post(formBody)
+                .post(body)
                 .build();
         final Call postCall = postClient.newCall(postRequest);
 
@@ -123,11 +122,11 @@ public class netService extends Service {
     public JSONObject createJsonProvisionRequest() {
         JSONObject obj = new JSONObject();
         try {
-            obj.put("id", "3");
-            obj.put("name", "NAME OF STUDENT");
-            obj.put("year", "3rd");
-            obj.put("curriculum", "Arts");
-            obj.put("birthday", "5/5/1993");
+            obj.put("Email", "3");
+            obj.put("Lat", "NAME OF STUDENT");
+            obj.put("Log", "3rd");
+            obj.put("Rand", 1254842123 );
+
         } catch (JSONException e) {
             // TODO Auto-generated catch block
             e.printStackTrace();
