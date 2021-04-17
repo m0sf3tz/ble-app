@@ -13,6 +13,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Criteria;
 import android.location.Location;
@@ -20,15 +21,17 @@ import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.CheckBox;
+import android.widget.EditText;
+import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
-import java.io.IOException;
-import java.text.Normalizer;
-import java.util.concurrent.TimeUnit;
+import java.util.UUID;
 
 import okhttp3.*;
 
@@ -39,8 +42,21 @@ public class GattConnected extends AppCompatActivity {
     boolean mBoundNetService = false;
     private Handler bleServiceHandler = new Handler();
     private final static String TAG = "GattConnected";
-    private final static String SERVICE_NAME_SHORT_BLE = ".bleService";
-    private final static String SERVICE_NAME_SHORT_NET = ".netService";
+    private final static int MAX_SSID_PW_LEN = 100;
+
+    static class locationClass{
+        private double Lat;
+        private double Long;
+        private Boolean status;
+        locationClass (Boolean status){
+            this.status = status;
+        }
+        locationClass(double Lat, double Long){
+            this.status = true;
+            this.Lat = Lat;
+            this.Long = Long;
+        }
+    }
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
@@ -48,10 +64,70 @@ public class GattConnected extends AppCompatActivity {
             final String action = intent.getAction();
             if (bleService.ACTION_GATT_DISCONNECTED.equals(action)) {
                 Log.i(TAG, "onReceive: Disconnected from GATT server!");
-
-                Intent ActivityIntent = new Intent(getApplicationContext(), MainActivity.class);
-                startActivity(ActivityIntent);
+                Runnable run = new Runnable() {
+                    @Override
+                    public void run() {
+                        Intent ActivityIntent = new Intent(getApplicationContext(), MainActivity.class);
+                        startActivity(ActivityIntent);
+                    }
+                };
+                // In the event of a BLE error, two things will happen,
+                // If we are in the middle of provisioning the device, we
+                // want to give the user feedback, however, a broadacst will
+                // also come from the ble service that will take us back to the
+                // main activity. We will delay going back to the main
+                // activity so we can display that we failed to provision the device
+                final Handler handler = new Handler(Looper.getMainLooper());
+                handler.postDelayed(run, 1000);
             }
+            if (bleService.ACTION_GATT_WRITE_GOOD.equals(action)){
+                Log.i(TAG, "onReceive: Write good!!");
+
+                Runnable stopProgressBar = new Runnable() {
+                    @Override
+                    public void run() {
+                        ProgressBar progressBarProvision = (ProgressBar)findViewById(R.id.progressBarProvision);
+                        progressBarProvision.setVisibility(View.INVISIBLE);
+
+                        TextView provisionStatus = (TextView)findViewById(R.id.provisionStatus);
+                        provisionStatus.setText("Device provisioned!");
+                    }
+                };
+                runOnUiThread(stopProgressBar);
+            }
+
+            if (bleService.ACTION_GATT_WRITE_BAD.equals(action)){
+                Log.i(TAG, "onReceive: Write bad!!");
+
+                Runnable stopProgressBar = new Runnable() {
+                    @Override
+                    public void run() {
+                        ProgressBar progressBarProvision = (ProgressBar)findViewById(R.id.progressBarProvision);
+                        progressBarProvision.setVisibility(View.INVISIBLE);
+
+                        TextView provisionStatus = (TextView)findViewById(R.id.provisionStatus);
+                        provisionStatus.setText("Failed to provision: BLE issues!");
+                    }
+                };
+                runOnUiThread(stopProgressBar);
+            }
+
+            if (netService.ACTION_BACK_END_FAILED.equals(action)){
+                Log.i(TAG, "onReceive: Network issues!!!");
+
+                Runnable stopProgressBar = new Runnable() {
+                    @Override
+                    public void run() {
+                        ProgressBar progressBarProvision = (ProgressBar)findViewById(R.id.progressBarProvision);
+                        progressBarProvision.setVisibility(View.INVISIBLE);
+
+                        TextView provisionStatus = (TextView)findViewById(R.id.provisionStatus);
+                        provisionStatus.setText("Failed to provision: Network issues!!");
+                    }
+                };
+                runOnUiThread(stopProgressBar);
+            }
+
         }
     };
 
@@ -92,6 +168,9 @@ public class GattConnected extends AppCompatActivity {
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(bleService.ACTION_GATT_DISCONNECTED);
+        intentFilter.addAction(bleService.ACTION_GATT_WRITE_GOOD);
+        intentFilter.addAction(bleService.ACTION_GATT_WRITE_BAD);
+        intentFilter.addAction(netService.ACTION_BACK_END_FAILED);
         return intentFilter;
     }
 
@@ -121,8 +200,11 @@ public class GattConnected extends AppCompatActivity {
                 }
             }
         };
-        // uncomment to opll!
+        // uncomment to poll!
         // bleServiceHandler.postDelayed(poll, 1000);
+
+        ProgressBar progressBarProvision =(ProgressBar)findViewById(R.id.progressBarProvision);
+        progressBarProvision.setVisibility(View.INVISIBLE);
     }
 
     @Override
@@ -165,7 +247,7 @@ public class GattConnected extends AppCompatActivity {
         mLiveDataWifi.observe(this, wifiObserver);
     }
 
-    public void getLocation(View v) {
+    public locationClass getLocation(View v) {
         // Get the location manager
         LocationManager locationManager = (LocationManager) getSystemService(LOCATION_SERVICE);
         Criteria criteria = new Criteria();
@@ -178,7 +260,7 @@ public class GattConnected extends AppCompatActivity {
             //                                          int[] grantResults)
             // to handle the case where the user grants the permission. See the documentation
             // for ActivityCompat#requestPermissions for more details.
-            return;
+            return new locationClass(false);
         }
         Location location = locationManager.getLastKnownLocation(bestProvider);
         Double lat = 0.0, lon = 0.0;
@@ -188,8 +270,8 @@ public class GattConnected extends AppCompatActivity {
         } catch (NullPointerException e) {
             e.printStackTrace();
         }
-
-        Log.i(TAG, "getLocation: lat = " + lat.toString() + "long = " + lon.toString());
+        Log.i(TAG, "getLocation: lat = " + lat.toString() + " long = " + lon.toString());
+        return new locationClass(lat, lon);
     }
 
     @Override
@@ -217,8 +299,55 @@ public class GattConnected extends AppCompatActivity {
         }
     }
 
-    public void sendCommand(View v) {
-        Log.i(TAG, "sen: sending!");
-        mNet.provisionDevice();
+    public void provisionDevice(View v) {
+        Log.i(TAG, "Provisioning device!");
+
+        TextView provisionStatus = (TextView)findViewById(R.id.provisionStatus);
+        provisionStatus.setText("");
+
+        String wifiSsid = ((EditText)findViewById(R.id.wifiSsid)).getText().toString();
+        String wifiPassword = ((EditText)findViewById(R.id.wifiPassword)).getText().toString();
+        String userEmail = ((EditText)findViewById(R.id.userEmail)).getText().toString();
+
+        locationClass location = getLocation(v);
+        if (!location.status){
+            provisionStatus.setText("Failed to get location!");
+        }
+
+        if (wifiSsid.equals("")) {
+            Log.i(TAG, "provisionDevice: Invalid Wifi Name!");
+            Toast.makeText(getApplicationContext(),"Invalid Wifi Name!",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (wifiPassword.equals("")) {
+            Log.i(TAG, "provisionDevice: Invalid WiFi Password!");
+            Toast.makeText(getApplicationContext(),"Invalid WiFi Password!",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (userEmail.equals("")) {
+            Log.i(TAG, "provisionDevice: Invalid Email!");
+            Toast.makeText(getApplicationContext(),"Invalid Email!",Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        if (wifiSsid.length() > MAX_SSID_PW_LEN) {
+            Log.i(TAG, "provisionDevice: WiFi name too long!");
+            Toast.makeText(getApplicationContext(),"WiFi name too long!",Toast.LENGTH_SHORT).show();
+            return;
+        }
+        if (wifiPassword.length() > MAX_SSID_PW_LEN) {
+            Log.i(TAG, "provisionDevice: WiFi Password too long!");
+            Toast.makeText(getApplicationContext(),"WiFi Password too long!",Toast.LENGTH_SHORT).show();
+            return;
+        }
+
+        String randomToken = UUID.randomUUID().toString();
+        Log.i(TAG, "provisionDevice: id" + randomToken);
+        mNet.provisionDevice(wifiSsid, wifiPassword, userEmail,String.valueOf(location.Long),
+                String.valueOf(location.Lat), randomToken);
+
+        ProgressBar progressBarProvision =(ProgressBar)findViewById(R.id.progressBarProvision);
+        progressBarProvision.setVisibility(View.VISIBLE);
     }
+
 }

@@ -17,11 +17,13 @@ import android.content.BroadcastReceiver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
+import android.content.SharedPreferences;
 import android.os.Binder;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.os.IBinder;
 import android.os.Message;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.util.SparseArray;
 
@@ -38,6 +40,12 @@ public class bleService extends Service {
             "com.example.workManager.le.ACTION_GATT_DISCONNECTED";
     public final static String ACTION_GATT_DISCOVERED =
             "com.example.workManager.le.ACTION_GATT_DISCOVERED";
+    public final static String ACTION_GATT_WRITE_GOOD =
+            "com.example.workManager.le.ACTION_GATT_WRITE_GOOD";
+    public final static String ACTION_GATT_WRITE_BAD =
+            "com.example.workManager.le.ACTION_GATT_BAD";
+    private final static String API_KEY_STRING_KEY = "API_KEY_STRING_KEY";
+
     final static String TAG = "MyService";
     // When filtering for advertising packets, we filter for devices that have device name set to
     // TERA_FIRE_GUARD _AND_ manufacturer ID set to 52651
@@ -45,12 +53,9 @@ public class bleService extends Service {
     final static String DEVICE_NAME = "TERA_FIRE_GUARD";
     final static int MANUFACTURER_ID = 52651;
     static final String PROVISIONED_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
-    static final String WIFI_UUID = "0000beef-0000-1000-8000-00805f9b34fb";
+    static final String DEVICE_STATUS_UUID = "0000beef-0000-1000-8000-00805f9b34fb";
     private static final long SCAN_PERIOD = 2000;
     private static final int GATT_SHUT_DOWN = 1;
-    private static final int STATE_DISCONNECTED = 0;
-    private static final int STATE_CONNECTING = 1;
-    private static final int STATE_CONNECTED = 2;
     static BluetoothGatt refGatt;
     private static ArrayList<discoveredDevice> discoveredDevicesArray = new ArrayList<discoveredDevice>();
     private final IBinder binder = new LocalBinder();
@@ -63,6 +68,9 @@ public class bleService extends Service {
     private ArrayList<ScanFilter> filterList;
     private ScanSettings settings;
     private MutableLiveData<String> currentName;
+    private final int GET_PROVISION_STATUS = 0;
+    private final int GET_PROVISION_CHAR = 1;
+    private static String api_key;
 
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
@@ -70,9 +78,17 @@ public class bleService extends Service {
             final String action = intent.getAction();
             if (netService.REQUEST_BLE_PASS_DATA.equals(action)) {
                 Log.i(TAG, "onReceive: Will pass data to device!");
-                byte b[]= intent.getByteArrayExtra("chunk" );
-                Log.i(TAG, "onReceive: " + b[0]);
-            } 
+                byte blob[]= intent.getByteArrayExtra("blob" );
+                // store the temp api_key, we will commit this to memory if the BLE
+                // write to the device is good
+                bleService.api_key = intent.getStringExtra("api_key" );
+                // must get a reference to the service
+                IBinder binder = peekService(context, new Intent(context, bleService.class));
+                if (binder == null)
+                    return;
+                bleService ble = ((bleService.LocalBinder) binder).getService();
+                ble.setChar(blob);
+            }
         }
     };
 
@@ -266,7 +282,7 @@ public class bleService extends Service {
     }
 
     // this gets the handle to the characteristics, not the value itself
-    public BluetoothGattCharacteristic getChar() {
+    public BluetoothGattCharacteristic getChar(int characteristic) {
         if (refGatt == null)
             return null;
 
@@ -276,20 +292,27 @@ public class bleService extends Service {
             //get a list of characteristics
             List<BluetoothGattCharacteristic> characteristicsList = service.getCharacteristics();
             for (BluetoothGattCharacteristic characteristics : characteristicsList) {
-                if (characteristics.getUuid().toString().equals(WIFI_UUID)) {
-                    return characteristics;
+                if (characteristic == GET_PROVISION_CHAR) {
+                    if (characteristics.getUuid().toString().equals(PROVISIONED_UUID)) {
+                        return characteristics;
+                    }
+                }
+                if (characteristic == GET_PROVISION_STATUS) {
+                    if (characteristics.getUuid().toString().equals(DEVICE_STATUS_UUID)) {
+                        return characteristics;
+                    }
                 }
             }
             Log.i(TAG, "");
         }
-        Log.e(TAG, "getChar: chould not find char");
+        Log.e(TAG, "getChar: Could not find char");
         return null;
     }
 
-    public void setChar() {
-        BluetoothGattCharacteristic bleChar = getChar();
+    public void setChar(byte[] blob) {
+        BluetoothGattCharacteristic bleChar = getChar(GET_PROVISION_CHAR);
         if (bleChar != null) {
-            bleChar.setValue("12");
+            bleChar.setValue(blob);
             if (!refGatt.writeCharacteristic(bleChar)) {
                 Log.e(TAG, "setChar: Failed to write characteristic");
             }
@@ -301,7 +324,7 @@ public class bleService extends Service {
 
     //async
     public void readChar() {
-        BluetoothGattCharacteristic bleChar = getChar();
+        BluetoothGattCharacteristic bleChar = getChar(GET_PROVISION_STATUS);
         refGatt.readCharacteristic(bleChar);
     }
 
@@ -367,7 +390,7 @@ public class bleService extends Service {
             if (uuid.equals(PROVISIONED_UUID)) {
                 MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonProvisionedStatus();
                 mMutable.postValue(status);
-            } else if (uuid.equals(WIFI_UUID)) {
+            } else if (uuid.equals(DEVICE_STATUS_UUID)) {
                 MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonWifiStatus();
                 mMutable.postValue(status);
             }
@@ -409,6 +432,20 @@ public class bleService extends Service {
         public void onServicesDiscovered(BluetoothGatt gatt, int status) {
             Log.i(TAG, "onServicesDiscovered");
         }
+
+        public void onCharacteristicWrite(BluetoothGatt gatt,
+                                          BluetoothGattCharacteristic characteristic, int status) {
+            Log.i(TAG, "onCharacteristicWrite: Write callback, status = " + status);
+            if(status == BluetoothGatt.GATT_SUCCESS){
+                Log.i(TAG, "onCharacteristicWrite: Write Good!!");
+                broadcastUpdate(ACTION_GATT_WRITE_GOOD);
+                // commit stored API key in memory
+                storeApiKey(bleService.api_key);
+            } else {
+                Log.i(TAG, "onCharacteristicWrite: Write Failed!");
+                broadcastUpdate(ACTION_GATT_WRITE_BAD);
+            }
+        }
     }
 
     public class LocalBinder extends Binder {
@@ -422,5 +459,13 @@ public class bleService extends Service {
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(netService.REQUEST_BLE_PASS_DATA);
         return intentFilter;
+    }
+
+    private void storeApiKey(String api_key){
+        Log.i(TAG, "storeApiKey: Storing API key = " + api_key);
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        SharedPreferences.Editor editor = preferences.edit();
+        editor.putString(API_KEY_STRING_KEY, api_key);
+        editor.commit();
     }
 }

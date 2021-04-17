@@ -1,17 +1,13 @@
 package com.example.workmanager;
 
-import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
-import androidx.lifecycle.ViewModel;
-import androidx.lifecycle.ViewModelProvider;
 
 import android.Manifest;
-import android.app.Application;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
@@ -27,6 +23,8 @@ import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
 import android.widget.ListView;
+import android.widget.ProgressBar;
+import android.widget.TextView;
 
 import java.util.ArrayList;
 
@@ -61,7 +59,7 @@ public class MainActivity extends AppCompatActivity {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         byte arr[] = {0, 1, 2, 3, 4};
-        crc16.getCrc(arr);
+        byteManager.getCrc(arr);
     }
 
     @Override
@@ -110,6 +108,8 @@ public class MainActivity extends AppCompatActivity {
                 for (String device : newItems) {
                     itemsAdapter.add(device);
                 }
+                ProgressBar progressBarScan =(ProgressBar)findViewById(R.id.progressBarScan);
+                progressBarScan.setVisibility(View.INVISIBLE);
             }
         };
 
@@ -143,6 +143,8 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "startScan: Starting Scan!");
         if (mService != null) {
             mService.BleScan();
+            ProgressBar progressBarScan =(ProgressBar)findViewById(R.id.progressBarScan);
+            progressBarScan.setVisibility(View.VISIBLE);
         }
     }
 

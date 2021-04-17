@@ -2,8 +2,22 @@ package com.example.workmanager;
 
 import android.util.Log;
 
-public class crc16 {
-    final static String TAG = "com.example.workmanager.crc16";
+import kotlin.collections.FloatIterator;
+
+public class byteManager {
+    final static String TAG = "byteManager";
+
+    final static int WIFI_SSID_LEN = 100;
+    final static int WIFI_PW_LEN   = 100;
+    final static int API_KEY_LEN   = 64;
+    final static int CRC16_LEN = 2;
+
+    final static int WIFI_SSID_OFFSET = 0;
+    final static int WIFI_PW_OFFSET   = WIFI_SSID_LEN;
+    final static int API_KEY_OFFSET   = WIFI_PW_OFFSET + WIFI_PW_LEN;
+
+    final static int BLOB_LEN = WIFI_SSID_LEN + WIFI_PW_LEN + API_KEY_LEN;
+    final static int BLOB_LEN_WITH_CRC = BLOB_LEN + CRC16_LEN;
 
     static int[] crc16Table = {
             0x0000, 0x1021, 0x2042, 0x3063, 0x4084, 0x50a5, 0x60c6, 0x70e7,
@@ -40,12 +54,55 @@ public class crc16 {
             0x6e17, 0x7e36, 0x4e55, 0x5e74, 0x2e93, 0x3eb2, 0x0ed1, 0x1ef0
     };
 
-    static int getCrc(byte [] arrArg) {
+    public static byte[] createProvisionBlob(String wifiSsid, String wifiPassword, String apiKey) {
+        byte[] blobNoCrc = new byte[BLOB_LEN];
+        byte[] blobCrc = new byte[BLOB_LEN_WITH_CRC];
+
+        System.arraycopy(wifiSsid.getBytes(),
+                0,
+                blobNoCrc,
+                0,
+                wifiSsid.getBytes().length);
+
+        System.arraycopy(wifiPassword.getBytes(),
+                0,
+                blobNoCrc,
+                WIFI_PW_OFFSET,
+                wifiPassword.getBytes().length);
+
+        System.arraycopy(apiKey.getBytes(),
+                0,
+                blobNoCrc,
+                API_KEY_OFFSET,
+                apiKey.getBytes().length);
+
+        byte[] crc = getCrc(blobNoCrc);
+        Log.i(TAG, "createProvisionBlob: CRC VALUE = " + crc[0] + " " + crc[1] );
+
+        // Create new array = CRC[0:3] + [4:]
+        System.arraycopy(crc,
+                0,
+                blobCrc,
+                0,
+                crc.length);
+
+        System.arraycopy(blobNoCrc,
+                0,
+                blobCrc,
+                2,
+                blobNoCrc.length);
+        return blobCrc;
+    }
+
+    public static byte[] getCrc(byte[] chunk) {
         int crc = 0xBEEF;
-        for (byte b : arrArg) {
-            crc = ( ( ( (crc << 8) ) ^ crc16Table[((crc >> 8) ^ b) & 0x00FF] ) & 0xFFFF);
+        for (byte b : chunk) {
+            crc = ((((crc << 8)) ^ crc16Table[((crc >>> 8) ^ b) & 0x00FF]) & 0xFFFF);
         }
-        Log.i(TAG, "getCrc: CRC = " + Integer.toHexString(crc) );
-        return crc;
+
+        // Get the CRC in bytes
+        return new byte[]{
+                (byte) (crc),
+                (byte) (crc >>>8)};
     }
 }
