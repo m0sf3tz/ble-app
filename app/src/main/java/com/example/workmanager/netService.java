@@ -2,16 +2,21 @@ package com.example.workmanager;
 
 import android.app.Service;
 import android.content.Intent;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.os.Binder;
 import android.os.IBinder;
 import android.util.Log;
 import android.view.View;
+import android.widget.ImageView;
+import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -34,12 +39,25 @@ public class netService extends Service {
     static final String URL_IP = "192.168.0.189";
     static final int URL_POR = 3000;
     static final String REQUEST_BLE_PASS_DATA = "REQUEST_BLE_PASS_DATA";
+    static final String NEW_THERMAL_IMAGE_NETWORK= "NEW_THERMAL_IMAGE_NETWORK";
+
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
     public static final int POST_REQUEST = 0;
     public static final int POST_STATUS_OK = 200;
     public final static String ACTION_BACK_END_FAILED =
             "com.example.workManager.le.ACTION_BACK_END_FAILED";
+    private Bitmap image;
+
+    // Since a different thread updates the bitmap, we need to have a mutex for it
+    public synchronized  Bitmap imageHandler(Boolean get, Bitmap bitmap){
+        if (get){
+            return image;
+        } else {
+            image = bitmap;
+            return null;
+        }
+    }
 
     @Override
     public IBinder onBind(Intent intent) {
@@ -145,6 +163,55 @@ public class netService extends Service {
                     final Intent intent = new Intent(netService.REQUEST_BLE_PASS_DATA);
                     intent.putExtra("blob", blob);
                     intent.putExtra("api_key", unMarshalJSON(api_key));
+                    sendBroadcast(intent);
+                }
+            }
+        }
+
+        networkWorker worker = new networkWorker();
+        worker.start();
+    }
+
+    public void getThermal(String api_key){
+        final OkHttpClient getClient = new OkHttpClient().newBuilder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .build();
+        HttpUrl httpUrl = new HttpUrl.Builder()
+                .scheme("http")
+                .host(URL_IP)
+                .port(URL_POR)
+                .addPathSegment("api")
+                .addPathSegment("get_thermal_image")
+                .addQueryParameter("api_key", "blah")
+                .build();
+        Request request = new Request.Builder()
+                .url(httpUrl)
+                .build();
+        final Call getCall = getClient.newCall(request);
+
+        class networkWorker extends Thread  {
+            public void run() {
+                Response responseGet;
+                try {
+                    responseGet = getCall.execute();
+                    Log.i(TAG, "run: PUT code = " + responseGet.code());
+                }
+                catch (IOException e){
+                    System.out.println("Exception whilst posting!!" + e.toString());
+                    broadcastUpdate (ACTION_BACK_END_FAILED);
+                    return;
+                }
+
+                InputStream inputStream = responseGet.body().byteStream();
+                Bitmap bitmap = BitmapFactory.decodeStream(inputStream);
+
+                if( responseGet.code() == POST_STATUS_OK) {
+                    Log.i(TAG, "run: RXed a new thermal image!!");
+                    final Intent intent = new Intent(netService.NEW_THERMAL_IMAGE_NETWORK);
+                    if(bitmap != null){
+                        imageHandler(false, bitmap);
+                    }
                     sendBroadcast(intent);
                 }
             }

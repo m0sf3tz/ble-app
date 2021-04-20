@@ -15,6 +15,7 @@ import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -22,6 +23,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
 import android.widget.ArrayAdapter;
+import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -29,11 +31,13 @@ import android.widget.TextView;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity {
-    private final String TAG = "MainActivity";
+    private static String TAG = "MainActivity";
     public final static String INTENT_SERIAL_MESSAGE = "INTENT_SERIAL_KEY";
     private MyViewModel model;
-    bleService mService;
-    boolean mBound = false;
+    bleService mBleService;
+    boolean mBoundBleService = false;
+    netService mNet;
+    boolean mBoundNetService = false;
     ArrayAdapter<String> itemsAdapter;
     private String DeviceSerial = "NULL";
 
@@ -49,6 +53,22 @@ public class MainActivity extends AppCompatActivity {
                 startActivity(ActivityIntent);
             } else if (bleService.ACTION_GATT_DISCOVERED.equals(action)) {
                 Log.i(TAG, "onReceive: Finished scanning for BLE devices!!");
+            } else if (netService.NEW_THERMAL_IMAGE_NETWORK.equals(action)) {
+                Log.i(TAG, "New image!");
+                // must get a reference to the service
+                IBinder binder = peekService(context, new Intent(context, netService.class));
+                if (binder == null)
+                    return;
+                netService net = ((netService.LocalBinder) binder).getService();
+                final Bitmap thermalImage = net.imageHandler(true, null);
+                Runnable run = new Runnable() {
+                    @Override
+                    public void run() {
+                        ImageView image =(ImageView)findViewById(R.id.thermalImage);
+                        image.setImageBitmap(thermalImage);
+                    }
+                };
+                runOnUiThread(run);
             }
         }
     };
@@ -58,8 +78,6 @@ public class MainActivity extends AppCompatActivity {
         Log.i(TAG, "onCreate: Created!");
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
-        byte arr[] = {0, 1, 2, 3, 4};
-        byteManager.getCrc(arr);
     }
 
     @Override
@@ -70,7 +88,12 @@ public class MainActivity extends AppCompatActivity {
         // start/connect to the BLE service
         Intent intent = new Intent(this, bleService.class);
         startService(intent);
-        bindService(intent, connection, Context.BIND_AUTO_CREATE);
+        bindService(intent, bleConnection, Context.BIND_AUTO_CREATE);
+
+        // start/connect to the net service
+        intent = new Intent(this, netService.class);
+        startService(intent);
+        bindService(intent, netConnection, Context.BIND_AUTO_CREATE);
 
         // make sure we have proper permissions
         LocationManager manager = (LocationManager) getSystemService(Context.LOCATION_SERVICE);
@@ -125,7 +148,7 @@ public class MainActivity extends AppCompatActivity {
                     Log.i(TAG, "onItemClick: Failed to find item");
                 }
                 Log.i(TAG, "onItemClick: ");
-                mService.BleConnect(position);
+                mBleService.BleConnect(position);
             }
         });
     }
@@ -133,35 +156,57 @@ public class MainActivity extends AppCompatActivity {
     @Override
     protected void onStop() {
         super.onStop();
-        if (mBound) {
-            unbindService(connection);
-            mBound = false;
+        if (mBoundBleService) {
+            unbindService(bleConnection);
+            mBoundBleService = false;
+        }
+        if (mBoundNetService) {
+            unbindService(netConnection);
+            mBoundBleService = false;
         }
     }
 
     public void startScan(View v) {
         Log.i(TAG, "startScan: Starting Scan!");
-        if (mService != null) {
-            mService.BleScan();
+        if (mBleService != null) {
+            mBleService.BleScan();
             ProgressBar progressBarScan =(ProgressBar)findViewById(R.id.progressBarScan);
             progressBarScan.setVisibility(View.VISIBLE);
         }
     }
 
-    private ServiceConnection connection = new ServiceConnection() {
+    public void foo(View v) {
+        mNet.getThermal("asdfsdf");
+    }
+
+    private ServiceConnection bleConnection = new ServiceConnection() {
         @Override
         public void onServiceConnected(ComponentName className,
                                        IBinder service) {
             Log.i(TAG, "onServiceConnected: " + className.getShortClassName());
             // We've bound to BLE service, cast the IBinder and get BLE service instance
             bleService.LocalBinder binder = (bleService.LocalBinder) service;
-            mService = binder.getService();
-            mBound = true;
+            mBleService = binder.getService();
+            mBoundBleService = true;
+        }
+
+        @Override
+        public void onServiceDisconnected(ComponentName arg0) { mBoundBleService = false; }
+    };
+
+    private ServiceConnection netConnection = new ServiceConnection() {
+        @Override
+        public void onServiceConnected(ComponentName className,
+                                       IBinder service) {
+            Log.i(TAG, "onServiceConnected: Connected to NET service!");
+            netService.LocalBinder binder = (netService.LocalBinder) service;
+            mNet = binder.getService();
+            mBoundNetService = true;
         }
 
         @Override
         public void onServiceDisconnected(ComponentName arg0) {
-            mBound = false;
+            mBoundNetService = false;
         }
     };
 
@@ -180,8 +225,7 @@ public class MainActivity extends AppCompatActivity {
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(bleService.ACTION_GATT_CONNECTED);
-        //intentFilter.addAction(MyService.ACTION_GATT_DISCOVERED);
-        //intentFilter.addAction(MyService.ACTION_GATT_DISCONNECTED);
+        intentFilter.addAction(netService.NEW_THERMAL_IMAGE_NETWORK);
         return intentFilter;
     }
 }
