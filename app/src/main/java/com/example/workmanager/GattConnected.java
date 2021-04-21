@@ -286,6 +286,7 @@ public class GattConnected extends AppCompatActivity {
         super.onStop();
         if (mBoundBleService) {
             unbindService(bleConnection);
+            mBle.disconnect();
             mBoundBleService = false;
         }
         if (mBoundNetService) {

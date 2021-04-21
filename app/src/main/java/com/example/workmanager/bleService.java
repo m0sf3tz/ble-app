@@ -52,8 +52,12 @@ public class bleService extends Service {
     // this is how we uniquely identify TeraHelion Devices
     final static String DEVICE_NAME = "TERA_FIRE_GUARD";
     final static int MANUFACTURER_ID = 52651;
-    static final String PROVISIONED_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
+
+    // WRITE, used to provision the device
+    static final String PROVISION_UUID = "0000abcd-0000-1000-8000-00805f9b34fb";
+    // READ, WiFi + provisioned status,
     static final String DEVICE_STATUS_UUID = "0000beef-0000-1000-8000-00805f9b34fb";
+
     private static final long SCAN_PERIOD = 2000;
     private static final int GATT_SHUT_DOWN = 1;
     static BluetoothGatt refGatt;
@@ -71,6 +75,9 @@ public class bleService extends Service {
     private final int GET_PROVISION_STATUS = 0;
     private final int GET_PROVISION_CHAR = 1;
     private static String api_key;
+    private static final int NO_WIFI_NO_PROVISIONED = 0;
+    private static final int PROVISIONED            = 1;
+    private static final int WIFI_OK                = 2;
 
     private final BroadcastReceiver broadcastReceiver = new BroadcastReceiver() {
         @Override
@@ -137,6 +144,15 @@ public class bleService extends Service {
         Log.i(TAG, "onDestroy: service destroyed!");
         unregisterReceiver(broadcastReceiver);
         close();
+    }
+
+    // disconnects from BLE
+    public void disconnect(){
+        Log.i(TAG, "disconnect: disconnect from BLE!");
+        if (refGatt == null) {
+            return;
+        }
+        refGatt.disconnect();
     }
 
     @Override
@@ -293,7 +309,7 @@ public class bleService extends Service {
             List<BluetoothGattCharacteristic> characteristicsList = service.getCharacteristics();
             for (BluetoothGattCharacteristic characteristics : characteristicsList) {
                 if (characteristic == GET_PROVISION_CHAR) {
-                    if (characteristics.getUuid().toString().equals(PROVISIONED_UUID)) {
+                    if (characteristics.getUuid().toString().equals(PROVISION_UUID)) {
                         return characteristics;
                     }
                 }
@@ -382,17 +398,28 @@ public class bleService extends Service {
             byte[] arr = characteristic.getValue();
             // This value is coming from the device, it will set it to 0xFF if the condition is true
             // else 0x00.
-            Boolean status = false;
-            if (arr.length > 0) {
-                status = arr[0] != 0;
+            Boolean wifiStatus = false;
+            Boolean provisionStatus = false;
+            if (arr.length == 0) {
+                Log.i(TAG, "updateUiStatus: Error? Nothin read!");
+                return;
             }
 
-            if (uuid.equals(PROVISIONED_UUID)) {
-                MutableLiveData<Boolean> mMutable = globalsApplication.getLiveDataSingletonProvisionedStatus();
-                mMutable.postValue(status);
-            } else if (uuid.equals(DEVICE_STATUS_UUID)) {
-                MutableLiveData<Boolean> mMutable = globalsApplication.getLiveDataSingletonWifiStatus();
-                mMutable.postValue(status);
+            if (arr[0] == NO_WIFI_NO_PROVISIONED) {
+                MutableLiveData<Boolean> mMutableProv = globalsApplication.getLiveDataSingletonProvisionedStatus();
+                mMutableProv.postValue(false);
+                MutableLiveData<Boolean> mMutableWifi = globalsApplication.getLiveDataSingletonWifiStatus();
+                mMutableWifi.postValue(false);
+            } else if (arr[0] == PROVISIONED) {
+                MutableLiveData<Boolean> mMutableProv = globalsApplication.getLiveDataSingletonProvisionedStatus();
+                mMutableProv.postValue(true);
+                MutableLiveData<Boolean> mMutableWifi = globalsApplication.getLiveDataSingletonWifiStatus();
+                mMutableWifi.postValue(false);
+            } else {
+                MutableLiveData<Boolean> mMutableProv = globalsApplication.getLiveDataSingletonProvisionedStatus();
+                mMutableProv.postValue(true);
+                MutableLiveData<Boolean> mMutableWifi = globalsApplication.getLiveDataSingletonWifiStatus();
+                mMutableWifi.postValue(true);
             }
         }
 

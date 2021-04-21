@@ -1,7 +1,6 @@
 package com.example.workmanager;
 
 import android.Manifest;
-import android.annotation.SuppressLint;
 import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
@@ -77,23 +76,5 @@ public class globalsApplication extends Application {
         return sInstanceDeviceArr;
     }
 
-    public void getLocation(Context context) {
-        // Get the location manager
-        LocationManager locationManager = (LocationManager) context.getSystemService(LOCATION_SERVICE);
-        Criteria criteria = new Criteria();
-        String bestProvider = locationManager.getBestProvider(criteria, false);
-
-
-        @SuppressLint("MissingPermission") Location location = locationManager.getLastKnownLocation(bestProvider);
-        Double lat = 0.0, lon = 0.0;
-        try {
-            lat = location.getLatitude();
-            lon = location.getLongitude();
-        } catch (NullPointerException e) {
-            e.printStackTrace();
-        }
-        Log.i(TAG, "getLocation: lat = " + lat.toString() + " long = " + lon.toString());
-        //return new locationClass(lat, lon);
-    }
 }
 
