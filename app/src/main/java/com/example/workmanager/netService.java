@@ -14,6 +14,8 @@ import android.widget.ImageView;
 import android.widget.RelativeLayout;
 import android.widget.Toast;
 
+import com.google.android.gms.internal.age;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -46,6 +48,7 @@ public class netService extends Service {
     static final String REQUEST_BLE_PASS_DATA = "REQUEST_BLE_PASS_DATA";
     static final String NEW_THERMAL_IMAGE_NETWORK= "NEW_THERMAL_IMAGE_NETWORK";
     static final String NO_THERMAL_META = "NO_THERMAL_META";
+    static final String IMAGE_AGE_KEY = "IMAGE_AGE_KEY";
 
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
@@ -177,7 +180,10 @@ public class netService extends Service {
         worker.start();
     }
 
-    public void getThermal(String api_key){
+    // If we get here, we know the we have an image, and also the image age,
+    // this function will bundle the image + age and send it to the main
+    // page
+    public void getThermal(String api_key, final int age){
         final OkHttpClient getClient = new OkHttpClient().newBuilder()
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
@@ -218,6 +224,7 @@ public class netService extends Service {
                     if(bitmap != null){
                         imageHandler(false, bitmap);
                     }
+                    intent.putExtra(IMAGE_AGE_KEY, age);
                     sendBroadcast(intent);
                 }
             }
@@ -278,10 +285,13 @@ public class netService extends Service {
                     }
 
                     boolean valid = false;
+                    int age = 0;
                     final Intent intent = new Intent(netService.NO_THERMAL_META);
                     try {
                         valid = (boolean)jsonResponse.get("Image_valid");
-                    } catch (JSONException e) {
+                        age   = (int)jsonResponse.get("Image_age");
+                    }
+                    catch (JSONException e) {
                         sendBroadcast(intent);
                     }
                     if (valid == false){
@@ -289,7 +299,7 @@ public class netService extends Service {
                         sendBroadcast(intent);
                     } else {
                         Log.i(TAG, "Valid image on backend, fetching!");
-                        getThermal(api_key);
+                        getThermal(api_key, age);
                     }
                 }
             }

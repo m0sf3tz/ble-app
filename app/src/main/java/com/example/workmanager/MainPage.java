@@ -38,10 +38,7 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
-import android.widget.Toast;
-
 import java.util.ArrayList;
-import java.util.concurrent.TimeUnit;
 
 public class MainPage extends AppCompatActivity {
     private static String TAG = "MainActivity";
@@ -55,6 +52,7 @@ public class MainPage extends AppCompatActivity {
     private String DeviceSerial = "NULL";
     public static String API_NULL_VALUE = "NULL_VALUE";
     private NotificationManagerCompat notificationManager;
+    final static int default_age = -1;
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
@@ -76,11 +74,21 @@ public class MainPage extends AppCompatActivity {
                     return;
                 netService net = ((netService.LocalBinder) binder).getService();
                 final Bitmap thermalImage = net.imageHandler(true, null);
+                final int age = intent.getIntExtra(netService.IMAGE_AGE_KEY, default_age);
+                if (age == default_age){
+                    Log.i(TAG, "onReceive: Something wrong with the age...");
+                }
                 Runnable run = new Runnable() {
                     @Override
                     public void run() {
                         ImageView image =(ImageView)findViewById(R.id.thermalImage);
                         image.setImageBitmap(thermalImage);
+
+                        TextView debugText = (TextView) findViewById(R.id.fireStatus);
+                        if (debugText != null) {
+                            String ageString = "Image age (in seconds) = " + age;
+                            debugText.setText(ageString);
+                        }
                     }
                 };
                 runOnUiThread(run);
@@ -128,6 +136,7 @@ public class MainPage extends AppCompatActivity {
             Log.i("tag", "NO GPS!!");
         }
 
+        // Check if we have proper permissions, if not, request them
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
