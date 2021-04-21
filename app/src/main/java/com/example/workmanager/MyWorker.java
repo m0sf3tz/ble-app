@@ -1,26 +1,39 @@
 package com.example.workmanager;
 
+import android.Manifest;
 import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
+import android.content.pm.PackageManager;
+import android.location.Criteria;
+import android.location.Location;
+import android.location.LocationManager;
 import android.media.Ringtone;
 import android.media.RingtoneManager;
 import android.net.Uri;
 import android.preference.PreferenceManager;
 import android.util.Log;
+import android.view.View;
 
 import androidx.annotation.NonNull;
+import androidx.core.app.ActivityCompat;
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 import androidx.work.Worker;
 import androidx.work.WorkerParameters;
 
+import com.google.android.gms.location.FusedLocationProviderClient;
+import com.google.android.gms.location.LocationRequest;
+import com.google.android.gms.location.LocationServices;
+import com.google.android.gms.tasks.OnSuccessListener;
+
 import org.json.JSONException;
 import org.json.JSONObject;
 
 import java.io.IOException;
+import java.util.concurrent.Executor;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
@@ -33,18 +46,32 @@ public class MyWorker extends Worker {
     public static final String TAG = "myWorker";
     private static final String IS_THERE_FIRE_KEY = "Fire_present";
     private NotificationManagerCompat notificationManager;
-
+    private Context mContext;
     public MyWorker(
             @NonNull Context appContext,
             @NonNull WorkerParameters workerParams) {
         super(appContext, workerParams);
+        mContext = appContext;
     }
 
     @NonNull
     @Override
     public Result doWork() {
         System.out.println("Starting to poll for fire!!");
-        notificationManager = NotificationManagerCompat.from(getApplicationContext());
+        notificationManager = NotificationManagerCompat.from(mContext);
+        LocationManager locationManager = (LocationManager)getApplicationContext().getSystemService(Context.LOCATION_SERVICE);
+
+
+        FusedLocationProviderClient fusedLocationProviderClient = new FusedLocationProviderClient(getApplicationContext());
+        fusedLocationProviderClient.getLastLocation()
+                .addOnSuccessListener(new OnSuccessListener<Location>() {
+                    @Override
+                    public void onSuccess(Location location) {
+                        if (location != null) {
+                        }
+                    }
+                });
+
 
         String api_key = getApi();
         if (api_key == MainPage.API_NULL_VALUE){
@@ -131,11 +158,12 @@ public class MyWorker extends Worker {
             }
         }
         return Result.success();
+
+
     }
 
     private String getApi(){
         SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(getApplicationContext());
         return preferences.getString(bleService.API_KEY_STRING_KEY, MainPage.API_NULL_VALUE);
     }
-
 }

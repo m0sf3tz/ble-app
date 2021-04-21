@@ -35,4 +35,5 @@ dependencies {
     def lifecycle_version = "2.2.0"
     implementation "androidx.lifecycle:lifecycle-viewmodel:$lifecycle_version"
     implementation 'com.squareup.okhttp3:okhttp:4.1.0'
+    implementation 'com.google.android.gms:play-services:11.0.0'
 }

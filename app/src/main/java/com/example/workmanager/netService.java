@@ -285,6 +285,7 @@ public class netService extends Service {
                         sendBroadcast(intent);
                     }
                     if (valid == false){
+                        // did not find an image
                         sendBroadcast(intent);
                     } else {
                         Log.i(TAG, "Valid image on backend, fetching!");

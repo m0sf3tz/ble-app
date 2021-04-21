@@ -10,6 +10,7 @@ import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
 import androidx.work.Constraints;
 import androidx.work.OneTimeWorkRequest;
+import androidx.work.Operation;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
@@ -177,13 +178,6 @@ public class MainPage extends AppCompatActivity {
                 mBleService.BleConnect(position);
             }
         });
-
-        // Set up the work manager to poll
-        WorkManager mWorkManager = WorkManager.getInstance(this);
-        PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(MyWorker.class, 15, TimeUnit.MINUTES)
-                .setConstraints(Constraints.NONE)
-                .build();
-        mWorkManager.enqueue(work);
     }
 
     @Override

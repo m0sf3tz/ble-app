@@ -196,8 +196,7 @@ public class GattConnected extends AppCompatActivity {
                 }
             }
         };
-        // uncomment to poll!
-        // bleServiceHandler.postDelayed(poll, 1000);
+        bleServiceHandler.postDelayed(poll, 1000);
 
         ProgressBar progressBarProvision =(ProgressBar)findViewById(R.id.progressBarProvision);
         progressBarProvision.setVisibility(View.INVISIBLE);
