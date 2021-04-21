@@ -13,7 +13,6 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
-import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.location.Criteria;
 import android.location.Location;
@@ -24,7 +23,6 @@ import android.os.IBinder;
 import android.os.Looper;
 import android.util.Log;
 import android.view.View;
-import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.ProgressBar;
@@ -32,8 +30,6 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.util.UUID;
-
-import okhttp3.*;
 
 public class GattConnected extends AppCompatActivity {
     bleService mBle;
@@ -67,7 +63,7 @@ public class GattConnected extends AppCompatActivity {
                 Runnable run = new Runnable() {
                     @Override
                     public void run() {
-                        Intent ActivityIntent = new Intent(getApplicationContext(), MainActivity.class);
+                        Intent ActivityIntent = new Intent(getApplicationContext(), MainPage.class);
                         startActivity(ActivityIntent);
                     }
                 };
@@ -214,14 +210,14 @@ public class GattConnected extends AppCompatActivity {
 
         Intent intent = getIntent();
         if (intent != null) {
-            String serial = intent.getStringExtra(MainActivity.INTENT_SERIAL_MESSAGE);
+            String serial = intent.getStringExtra(MainPage.INTENT_SERIAL_MESSAGE);
             TextView serialDisplay = (TextView) findViewById(R.id.serialTextView);
             if (serialDisplay != null) {
                 serialDisplay.setText("Connected to: " + serial);
             }
         }
         // Create the observer which updates the UI.
-        MutableLiveData<Boolean> mLiveDataProvisioned = bleLiveData.getLiveDataSingletonProvisionedStatus();
+        MutableLiveData<Boolean> mLiveDataProvisioned = globalsApplication.getLiveDataSingletonProvisionedStatus();
         final Observer<Boolean> provisionedObserver = new Observer<Boolean>() {
             @Override
             public void onChanged(@Nullable final Boolean provisioned) {
@@ -234,7 +230,7 @@ public class GattConnected extends AppCompatActivity {
         mLiveDataProvisioned.observe(this, provisionedObserver);
 
         // Create the observer which updates the UI.
-        MutableLiveData<Boolean> mLiveDataWifi = bleLiveData.getLiveDataSingletonWifiStatus();
+        MutableLiveData<Boolean> mLiveDataWifi = globalsApplication.getLiveDataSingletonWifiStatus();
         final Observer<Boolean> wifiObserver = new Observer<Boolean>() {
             @Override
             public void onChanged(@Nullable final Boolean provisioned) {

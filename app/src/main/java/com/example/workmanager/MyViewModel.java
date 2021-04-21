@@ -31,17 +31,4 @@ public class MyViewModel extends ViewModel {
                 .build();
         mWorkManager.enqueue(work);
     }
-
-    public void checkNow() {
-        Log.i(TAG, "checkNow: Enqueued");
-        mWorkManager.enqueue(OneTimeWorkRequest.from(MyWorker.class));
-    }
-
-    public LiveData<List<String>> getDevices() {
-        if (bleDevices == null) {
-            bleDevices = new MutableLiveData<List<String>>();
-        }
-        return bleDevices;
-    }
-
 }

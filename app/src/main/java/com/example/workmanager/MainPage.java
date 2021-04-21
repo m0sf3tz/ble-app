@@ -3,22 +3,32 @@ package com.example.workmanager;
 import androidx.annotation.Nullable;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.app.ActivityCompat;
+import androidx.core.app.NotificationCompat;
+import androidx.core.app.NotificationManagerCompat;
 import androidx.core.content.ContextCompat;
 import androidx.lifecycle.MutableLiveData;
 import androidx.lifecycle.Observer;
+import androidx.work.Constraints;
+import androidx.work.OneTimeWorkRequest;
+import androidx.work.PeriodicWorkRequest;
+import androidx.work.WorkManager;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.PendingIntent;
 import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.content.ServiceConnection;
+import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.graphics.Bitmap;
 import android.location.LocationManager;
 import android.os.Bundle;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.AdapterView;
@@ -27,10 +37,12 @@ import android.widget.ImageView;
 import android.widget.ListView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import java.util.ArrayList;
+import java.util.concurrent.TimeUnit;
 
-public class MainActivity extends AppCompatActivity {
+public class MainPage extends AppCompatActivity {
     private static String TAG = "MainActivity";
     public final static String INTENT_SERIAL_MESSAGE = "INTENT_SERIAL_KEY";
     private MyViewModel model;
@@ -40,6 +52,8 @@ public class MainActivity extends AppCompatActivity {
     boolean mBoundNetService = false;
     ArrayAdapter<String> itemsAdapter;
     private String DeviceSerial = "NULL";
+    public static String API_NULL_VALUE = "NULL_VALUE";
+    private NotificationManagerCompat notificationManager;
 
     private final BroadcastReceiver mGattUpdateReceiver = new BroadcastReceiver() {
         @Override
@@ -66,6 +80,18 @@ public class MainActivity extends AppCompatActivity {
                     public void run() {
                         ImageView image =(ImageView)findViewById(R.id.thermalImage);
                         image.setImageBitmap(thermalImage);
+                    }
+                };
+                runOnUiThread(run);
+            }  else if (netService.NO_THERMAL_META.equals(action)) {
+                Log.i(TAG, "NO meta data found!!");
+                Runnable run = new Runnable() {
+                    @Override
+                    public void run() {
+                        TextView debugText = (TextView) findViewById(R.id.fireStatus);
+                        if (debugText != null) {
+                            debugText.setText("Can't find any thermal information on the cloud!...");
+                        }
                     }
                 };
                 runOnUiThread(run);
@@ -121,7 +147,7 @@ public class MainActivity extends AppCompatActivity {
         itemsAdapter = new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, items);
         final ListView listView = (ListView) findViewById(R.id.bleItems);
         listView.setAdapter(itemsAdapter);
-        final MutableLiveData<ArrayList<String>> myMutable = bleLiveData.getLiveDataSingletonDeviceArr();
+        final MutableLiveData<ArrayList<String>> myMutable = globalsApplication.getLiveDataSingletonDeviceArr();
         // Create the observer which updates the UI.
         final Observer<ArrayList<String>> nameObserver = new Observer<ArrayList<String>>() {
             @Override
@@ -151,6 +177,13 @@ public class MainActivity extends AppCompatActivity {
                 mBleService.BleConnect(position);
             }
         });
+
+        // Set up the work manager to poll
+        WorkManager mWorkManager = WorkManager.getInstance(this);
+        PeriodicWorkRequest work = new PeriodicWorkRequest.Builder(MyWorker.class, 15, TimeUnit.MINUTES)
+                .setConstraints(Constraints.NONE)
+                .build();
+        mWorkManager.enqueue(work);
     }
 
     @Override
@@ -175,8 +208,23 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    public void foo(View v) {
-        mNet.getThermal("asdfsdf");
+    public void getFireStatus(View v) {
+        if(mBoundNetService) {
+            String api_key = getApiKey();
+            if (api_key == API_NULL_VALUE){
+                TextView debugText = (TextView) findViewById(R.id.fireStatus);
+                if (debugText != null) {
+                    debugText.setText("No API key, please provision!");
+                }
+            } else {
+                mNet.getThermalMeta(api_key);
+            }
+        } else {
+            TextView debugText = (TextView) findViewById(R.id.fireStatus);
+            if (debugText != null) {
+                debugText.setText("Failed to connect to net service - BUG");
+            }
+        }
     }
 
     private ServiceConnection bleConnection = new ServiceConnection() {
@@ -222,10 +270,16 @@ public class MainActivity extends AppCompatActivity {
         unregisterReceiver(mGattUpdateReceiver);
     }
 
+    public String getApiKey(){
+        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(this);
+        return preferences.getString(bleService.API_KEY_STRING_KEY, API_NULL_VALUE);
+    }
+
     private static IntentFilter makeGattUpdateIntentFilter() {
         final IntentFilter intentFilter = new IntentFilter();
         intentFilter.addAction(bleService.ACTION_GATT_CONNECTED);
         intentFilter.addAction(netService.NEW_THERMAL_IMAGE_NETWORK);
+        intentFilter.addAction(netService.NO_THERMAL_META);
         return intentFilter;
     }
 }

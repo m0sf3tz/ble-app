@@ -44,7 +44,7 @@ public class bleService extends Service {
             "com.example.workManager.le.ACTION_GATT_WRITE_GOOD";
     public final static String ACTION_GATT_WRITE_BAD =
             "com.example.workManager.le.ACTION_GATT_BAD";
-    private final static String API_KEY_STRING_KEY = "API_KEY_STRING_KEY";
+    public final static String API_KEY_STRING_KEY = "API_KEY_STRING_KEY";
 
     final static String TAG = "MyService";
     // When filtering for advertising packets, we filter for devices that have device name set to
@@ -236,7 +236,7 @@ public class bleService extends Service {
     }
 
     private void updateLiveData() {
-        MutableLiveData<ArrayList<String>> mMutable = bleLiveData.getLiveDataSingletonDeviceArr();
+        MutableLiveData<ArrayList<String>> mMutable = globalsApplication.getLiveDataSingletonDeviceArr();
 
         ArrayList<String> deviceStringArr = new ArrayList<String>();
         if (discoveredDevicesArray != null) {
@@ -249,7 +249,7 @@ public class bleService extends Service {
     }
 
     private void clearLiveData() {
-        MutableLiveData<ArrayList<String>> mMutable = bleLiveData.getLiveDataSingletonDeviceArr();
+        MutableLiveData<ArrayList<String>> mMutable = globalsApplication.getLiveDataSingletonDeviceArr();
 
         // clear the old discovered devices
         if (discoveredDevicesArray != null) {
@@ -388,10 +388,10 @@ public class bleService extends Service {
             }
 
             if (uuid.equals(PROVISIONED_UUID)) {
-                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonProvisionedStatus();
+                MutableLiveData<Boolean> mMutable = globalsApplication.getLiveDataSingletonProvisionedStatus();
                 mMutable.postValue(status);
             } else if (uuid.equals(DEVICE_STATUS_UUID)) {
-                MutableLiveData<Boolean> mMutable = bleLiveData.getLiveDataSingletonWifiStatus();
+                MutableLiveData<Boolean> mMutable = globalsApplication.getLiveDataSingletonWifiStatus();
                 mMutable.postValue(status);
             }
         }

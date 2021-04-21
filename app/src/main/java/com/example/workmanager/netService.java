@@ -2,10 +2,12 @@ package com.example.workmanager;
 
 import android.app.Service;
 import android.content.Intent;
+import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Binder;
 import android.os.IBinder;
+import android.preference.PreferenceManager;
 import android.util.Log;
 import android.view.View;
 import android.widget.ImageView;
@@ -36,10 +38,14 @@ public class netService extends Service {
     private final IBinder binder = new LocalBinder();
     static final String URL_FULL_POST = "http://192.168.0.189:3000/api/provision_request/";
     static final String URL_FULL_GET =  "http://192.168.0.189:3000/api/provision_finalize/";
+    static final String GET_META_DATA_URL_SEGMENT = "get_thermal_meta";
+    static final String GET_THERMAL_IMAGE_URL_SEGMENT = "get_thermal_image";
+
     static final String URL_IP = "192.168.0.189";
     static final int URL_POR = 3000;
     static final String REQUEST_BLE_PASS_DATA = "REQUEST_BLE_PASS_DATA";
     static final String NEW_THERMAL_IMAGE_NETWORK= "NEW_THERMAL_IMAGE_NETWORK";
+    static final String NO_THERMAL_META = "NO_THERMAL_META";
 
     public static final MediaType JSON
             = MediaType.parse("application/json; charset=utf-8");
@@ -134,7 +140,6 @@ public class netService extends Service {
                     return;
                 }
 
-
                 Response responseGet = null;
                 try {
                     responseGet = getCall.execute();
@@ -158,11 +163,11 @@ public class netService extends Service {
 
                 if( responseGet.code() == POST_STATUS_OK) {
                     Log.i(TAG, "run: Status good!");
-                    byte[] blob = createProvisionBlob(wifiSsid, wifiPassword, unMarshalJSON(api_key));
+                    byte[] blob = createProvisionBlob(wifiSsid, wifiPassword, unMarshalApiKey(api_key));
                     Log.i(TAG, "Sending broadacst to BLE service!");
                     final Intent intent = new Intent(netService.REQUEST_BLE_PASS_DATA);
                     intent.putExtra("blob", blob);
-                    intent.putExtra("api_key", unMarshalJSON(api_key));
+                    intent.putExtra("api_key", unMarshalApiKey(api_key));
                     sendBroadcast(intent);
                 }
             }
@@ -177,13 +182,14 @@ public class netService extends Service {
                 .connectTimeout(5, TimeUnit.SECONDS)
                 .readTimeout(5, TimeUnit.SECONDS)
                 .build();
+
         HttpUrl httpUrl = new HttpUrl.Builder()
                 .scheme("http")
                 .host(URL_IP)
                 .port(URL_POR)
                 .addPathSegment("api")
-                .addPathSegment("get_thermal_image")
-                .addQueryParameter("api_key", "blah")
+                .addPathSegment(GET_THERMAL_IMAGE_URL_SEGMENT)
+                .addQueryParameter("api_key", api_key)
                 .build();
         Request request = new Request.Builder()
                 .url(httpUrl)
@@ -221,6 +227,77 @@ public class netService extends Service {
         worker.start();
     }
 
+    public void getThermalMeta(final String api_key) {
+        final OkHttpClient getClient = new OkHttpClient().newBuilder()
+                .connectTimeout(5, TimeUnit.SECONDS)
+                .readTimeout(5, TimeUnit.SECONDS)
+                .build();
+
+        HttpUrl httpUrl = new HttpUrl.Builder()
+                .scheme("http")
+                .host(URL_IP)
+                .port(URL_POR)
+                .addPathSegment("api")
+                .addPathSegment(GET_META_DATA_URL_SEGMENT)
+                .addQueryParameter("api_key", api_key)
+                .build();
+        Request request = new Request.Builder()
+                .url(httpUrl)
+                .build();
+        final Call getCall = getClient.newCall(request);
+
+        class networkWorker extends Thread {
+            public void run() {
+                Response responseGet;
+                try {
+                    responseGet = getCall.execute();
+                    Log.i(TAG, "run: PUT code = " + responseGet.code());
+                } catch (IOException e) {
+                    System.out.println("Exception whilst posting!!" + e.toString());
+                    broadcastUpdate(ACTION_BACK_END_FAILED);
+                    return;
+                }
+
+                String thermel_meta_string = null;
+                if (responseGet != null) {
+                    try {
+                        thermel_meta_string = responseGet.body().string();
+                        responseGet.close();
+                    } catch (IOException e) {
+                        broadcastUpdate(ACTION_BACK_END_FAILED);
+                        return;
+                    }
+                }
+
+                if (responseGet.code() == POST_STATUS_OK) {
+                    Log.i(TAG, "New thermal Meta Data!");
+                    JSONObject jsonResponse = unMarshalMeta(thermel_meta_string);
+                    if (jsonResponse == null) {
+                        broadcastUpdate(ACTION_BACK_END_FAILED);
+                        return;
+                    }
+
+                    boolean valid = false;
+                    final Intent intent = new Intent(netService.NO_THERMAL_META);
+                    try {
+                        valid = (boolean)jsonResponse.get("Image_valid");
+                    } catch (JSONException e) {
+                        sendBroadcast(intent);
+                    }
+                    if (valid == false){
+                        sendBroadcast(intent);
+                    } else {
+                        Log.i(TAG, "Valid image on backend, fetching!");
+                        getThermal(api_key);
+                    }
+                }
+            }
+        }
+
+        networkWorker worker = new networkWorker();
+        worker.start();
+    }
+
     public JSONObject createJsonProvisionRequest(int type, String randomToken, String email, String Long,
                                                  String Lat) {
         JSONObject obj = new JSONObject();
@@ -235,16 +312,22 @@ public class netService extends Service {
             // TODO Auto-generated catch block
             e.printStackTrace();
         }
-
         return obj;
     }
 
-    public String unMarshalJSON(String obj){
+    public String unMarshalApiKey(String obj){
         try {
-            return new JSONObject(new String(obj)).get("Api_key").toString();
+            return new JSONObject(obj).get("Api_key").toString();
         } catch (JSONException e) {
-            e.printStackTrace();
-            return "";
+            return null;
+        }
+    }
+
+    public static JSONObject unMarshalMeta(String obj){
+        try {
+            return new JSONObject(obj);
+        } catch (JSONException e) {
+            return null;
         }
     }
 
