@@ -35,7 +35,6 @@ import java.util.ArrayList;
 public class MainPage extends AppCompatActivity {
     private static String TAG = "MainActivity";
     public final static String INTENT_SERIAL_MESSAGE = "INTENT_SERIAL_KEY";
-    private MyViewModel model;
     bleService mBleService;
     boolean mBoundBleService = false;
     netService mNet;
