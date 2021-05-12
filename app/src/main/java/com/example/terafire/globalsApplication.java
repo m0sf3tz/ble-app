@@ -1,24 +1,13 @@
-package com.example.workmanager;
+package com.example.terafire;
 
-import android.Manifest;
 import android.app.Application;
 import android.app.NotificationChannel;
 import android.app.NotificationManager;
-import android.content.Context;
-import android.content.pm.PackageManager;
-import android.location.Criteria;
-import android.location.Location;
-import android.location.LocationManager;
 import android.os.Build;
-import android.util.Log;
 
-import androidx.annotation.MainThread;
-import androidx.core.app.ActivityCompat;
-import androidx.lifecycle.LiveData;
 import androidx.lifecycle.MutableLiveData;
 
 import java.util.ArrayList;
-import java.util.List;
 
 public class globalsApplication extends Application {
     private static MutableLiveData<Boolean> sInstanceProvisioned;
@@ -75,6 +64,5 @@ public class globalsApplication extends Application {
         }
         return sInstanceDeviceArr;
     }
-
 }
 

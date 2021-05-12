@@ -1,8 +1,6 @@
-package com.example.workmanager;
+package com.example.terafire;
 
 import android.util.Log;
-
-import kotlin.collections.FloatIterator;
 
 public class byteManager {
     final static String TAG = "byteManager";

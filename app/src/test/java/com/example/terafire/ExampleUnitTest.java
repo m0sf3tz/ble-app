@@ -1,4 +1,4 @@
-package com.example.workmanager;
+package com.example.terafire;
 
 import org.junit.Test;
 

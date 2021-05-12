@@ -1,20 +1,13 @@
-package com.example.workmanager;
+package com.example.terafire;
 
 import android.app.Service;
 import android.content.Intent;
-import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Binder;
 import android.os.IBinder;
-import android.preference.PreferenceManager;
 import android.util.Log;
-import android.view.View;
-import android.widget.ImageView;
-import android.widget.RelativeLayout;
 import android.widget.Toast;
-
-import com.google.android.gms.internal.age;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -24,16 +17,14 @@ import java.io.InputStream;
 import java.util.concurrent.TimeUnit;
 
 import okhttp3.Call;
-import okhttp3.FormBody;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
-import okhttp3.internal.http.HttpHeaders;
 
-import static com.example.workmanager.byteManager.createProvisionBlob;
+import static com.example.terafire.byteManager.createProvisionBlob;
 
 public class netService extends Service {
     final static String TAG = "netService";
